@@ -5,6 +5,8 @@
 
 A Claude Code plugin that implements Boy Scout Rule mechanics: passively detects refactoring opportunities as you work, then surfaces them at the end of each session so nothing gets lost and nothing interrupts your flow.
 
+⚠️ Pre-alpha version, use it at your own risk ⚠️
+
 ---
 
 ## How It Works
