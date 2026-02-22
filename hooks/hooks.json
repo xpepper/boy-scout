@@ -1,0 +1,28 @@
+{
+  "description": "Boy Scout refactoring detection and session summary hooks",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 $CLAUDE_PLUGIN_ROOT/hooks/post-tool-use.py",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 $CLAUDE_PLUGIN_ROOT/hooks/stop-hook.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

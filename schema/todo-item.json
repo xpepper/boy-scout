@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "BoyScoutTodoItem",
+  "description": "A refactoring opportunity detected by Boy Scout hooks or recorded by Claude.",
+  "type": "object",
+  "required": ["id", "type", "file_path", "locations", "description", "severity", "detected_at", "source", "dismissed"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Short unique identifier (8 hex chars)"
+    },
+    "type": {
+      "type": "string",
+      "enum": ["duplication", "function_size", "naming", "test_coverage", "custom"],
+      "description": "Category of the refactoring opportunity"
+    },
+    "file_path": {
+      "type": "string",
+      "description": "Path to the affected file, relative to project root"
+    },
+    "locations": {
+      "type": "array",
+      "description": "One or more line ranges where the issue occurs",
+      "items": {
+        "type": "object",
+        "required": ["line_start", "line_end"],
+        "properties": {
+          "line_start": { "type": "integer", "minimum": 1 },
+          "line_end":   { "type": "integer", "minimum": 1 }
+        }
+      },
+      "minItems": 1
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable explanation of the opportunity"
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["low", "medium", "high"],
+      "description": "Impact level of the refactoring opportunity"
+    },
+    "detected_at": {
+      "type": "number",
+      "description": "Unix timestamp when the opportunity was detected"
+    },
+    "source": {
+      "type": "string",
+      "enum": ["hook", "skill"],
+      "description": "Whether detected automatically (hook) or recorded by Claude (skill)"
+    },
+    "dismissed": {
+      "type": "boolean",
+      "description": "Whether this item has been reviewed and dismissed"
+    },
+    "context": {
+      "type": "string",
+      "description": "Optional additional context or suggested approach"
+    }
+  }
+}

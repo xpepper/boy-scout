@@ -1,0 +1,10 @@
+{
+  "name": "boy-scout",
+  "version": "0.1.0",
+  "description": "Opportunistic refactoring detection via Boy Scout Rule: leave the code better than you found it.",
+  "author": {
+    "name": "Pietro Di Bello"
+  },
+  "license": "MIT",
+  "keywords": ["refactoring", "code-quality", "boy-scout", "hooks"]
+}

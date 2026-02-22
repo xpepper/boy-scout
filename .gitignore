@@ -1,0 +1,16 @@
+# Claude project state
+.claude/boy-scout-todos.jsonl
+.claude/boy-scout-meta.json
+# Keep config under version control if desired; ignore if not:
+# .claude/boy-scout-config.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+*.egg-info/
+
+# OS
+.DS_Store
+Thumbs.db
