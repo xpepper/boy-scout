@@ -36,7 +36,7 @@ def _format_summary(todos: list) -> str:
     plural = "y" if count == 1 else "ies"
 
     lines = [
-        f"🏕️  Boy Scout report: {count} refactoring opportunit{plural} detected this session.",
+        f"🏕️  Boy Scout report: {count} new refactoring opportunit{plural} detected.",
         "",
     ]
 

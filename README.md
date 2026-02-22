@@ -132,10 +132,15 @@ Claude uses this skill proactively whenever it notices an improvement during nor
 
 ---
 
-## Session Workflow
+## How the Stop Hook Fires
 
-1. **Work normally** — hooks run silently on every file you write or edit
-2. **Session ends** — Stop hook injects a summary into Claude's context:
+The **Stop hook fires at the end of every Claude response** — not when you close the terminal. Whenever Claude finishes answering and hands control back to you, the Stop event triggers.
+
+This means no special action is needed. The workflow is:
+
+1. **Work normally** — ask Claude to write or edit files
+2. **PostToolUse runs silently** on each modified file, appending any findings to `.claude/boy-scout-todos.jsonl`
+3. **Stop hook fires** after Claude's response — if new findings exist since the last run, Claude's reply will end with a Boy Scout summary:
    ```
    🏕️  Boy Scout report: 4 refactoring opportunities detected this session.
 
@@ -147,7 +152,7 @@ Claude uses this skill proactively whenever it notices an improvement during nor
    💡 All items are saved in .claude/boy-scout-todos.jsonl.
       Start a Boy Scout session whenever you're ready to address them incrementally.
    ```
-3. **Boy Scout session** — when ready, start a new session and ask Claude to work through the JSONL file, addressing each opportunity one at a time
+4. **Boy Scout session** — when ready, ask Claude to work through `.claude/boy-scout-todos.jsonl`, addressing each opportunity one at a time
 
 ---
 
