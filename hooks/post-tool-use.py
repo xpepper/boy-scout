@@ -20,7 +20,6 @@ sys.path.insert(0, str(_LIB))
 
 from todo_manager import add_todo, load_config
 from detectors import run_all_detectors
-from pattern_analyzer import detect_language
 
 
 MAX_FILE_BYTES = 500 * 1024  # 500 KB
@@ -81,8 +80,11 @@ def _matches_ignore(rel_path: str, ignore_patterns: list) -> bool:
     for pattern in ignore_patterns:
         if fnmatch.fnmatch(rel_path, pattern):
             return True
-        # Also match directory prefixes: "vendor/" covers "vendor/foo/bar.rs"
-        if rel_path.startswith(pattern.rstrip("/")):
+        # Also match directory prefixes: "vendor/" covers "vendor/foo/bar.rs".
+        # The prefix must end on a path separator, so "target/" does not also
+        # swallow "targeting.py", "targets/" or "target_resolver.rs".
+        prefix = pattern.rstrip("/")
+        if prefix and (rel_path == prefix or rel_path.startswith(prefix + "/")):
             return True
     return False
 
