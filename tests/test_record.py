@@ -1,12 +1,14 @@
 """End-to-end tests for the record-opportunity CLI (skills/record-opportunity/record.py)."""
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).parent.parent
 _RECORD = _REPO_ROOT / "skills" / "record-opportunity" / "record.py"
+_RESOLVE = _REPO_ROOT / "skills" / "record-opportunity" / "resolve.py"
 _SKILL_MD = _REPO_ROOT / "skills" / "record-opportunity" / "SKILL.md"
 _SCHEMA = _REPO_ROOT / "schema" / "todo-item.json"
 
@@ -271,6 +273,41 @@ def test_skill_md_documents_every_valid_type():
 
     for type_name in _load_record_module().VALID_TYPES:
         assert f"`{type_name}`" in skill_md, f"{type_name} is not documented in SKILL.md"
+
+
+def test_skill_md_documents_every_flag_the_clis_accept():
+    """A flag Claude is never told about may as well not exist."""
+    skill_md = _SKILL_MD.read_text()
+
+    for script in (_RECORD, _RESOLVE):
+        flags = set(re.findall(r'add_argument\("(--[a-z-]+)"', script.read_text()))
+        assert flags, f"no flags found in {script.name} — the pin itself is broken"
+        for flag in flags:
+            assert flag in skill_md, f"{script.name}'s {flag} is not documented in SKILL.md"
+
+
+def test_skill_md_keeps_all_three_triage_decisions():
+    """The gate is the point of the skill: recording everything makes a TODO
+    graveyard, fixing everything derails the user's task. Losing any one of the
+    three branches breaks the balance.
+    """
+    skill_md = _SKILL_MD.read_text()
+
+    for decision in ("now", "next", "never"):
+        assert f"`{decision}`" in skill_md, f"triage decision '{decision}' is not documented"
+
+
+def test_skill_md_guards_the_now_path():
+    """An on-the-spot fix is only safe under conditions the skill has to state:
+    it happens on green, as its own commit, re-verified, and abandoned if it
+    turns out not to be small.
+    """
+    skill_md = _SKILL_MD.read_text().lower()
+
+    assert "on green" in skill_md
+    assert "refactor(" in skill_md          # its own conventional commit
+    assert "revert" in skill_md             # the escape hatch when it grows
+    assert "--outcome fixed" in skill_md    # a now fix is still recorded
 
 
 def _read_entries(project_dir):

@@ -20,14 +20,21 @@ version: 0.1.0
 
 ## Purpose
 
-Apply the Boy Scout Rule — *leave every piece of code a little better than you found it* —
-without derailing the current task. When Claude notices an improvement opportunity during
-normal work (editing, reviewing, implementing), record it immediately so it can be
-addressed in a dedicated Boy Scout session later.
+Apply the Boy Scout Rule — *leave the campground cleaner than you found it* — while
+staying on the task at hand.
 
-This skill complements the passive hook-based detection: hooks catch structural issues
-via static analysis; this skill captures the semantic opportunities that only contextual
-understanding reveals.
+The rule is about fixing the small thing **while you are standing there**. Deferring
+everything to a list is the failure mode the rule exists to prevent: a backlog nobody
+works through is worse than no backlog, because it looks like progress. But stopping a
+task to rename a variable is worse still.
+
+So this skill does two things, in this order:
+
+1. **Triage** the observation — `now`, `next`, or `never`.
+2. **Act**: make the fix (rare), record it for later (usual), or drop it.
+
+It complements the passive hook-based detection: hooks catch structural issues via
+static analysis; this skill captures what only having done the work reveals.
 
 ## When to Trigger
 
@@ -75,7 +82,108 @@ linter already reports.
 - **Dead code** (`dead_code`): Commented-out blocks, unused imports, unreachable branches
 - **Custom** (`custom`): Any other improvement worth revisiting
 
-Having noticed something, the next question is *when* to act on it — see **Triage**.
+Having noticed something, the next question is *when* to act on it.
+
+## Triage: `now`, `next`, `never`
+
+Every observation gets exactly one of three decisions. Make the decision explicitly —
+do not let "record it" be the automatic answer.
+
+### `now` — fix it while standing here
+
+Choose `now` only when **all four** of these hold:
+
+1. **You are already editing this file** in the current task.
+2. The fix is **small, obvious and mechanically safe** — a rename, an unused import,
+   a dead branch, an extracted local, a misleading comment.
+3. It **does not meaningfully expand the diff** or the review surface.
+4. It is **uncontroversial** — no judgment call a reviewer might disagree with.
+
+Condition 1 is **non-negotiable and decides most cases**. If the current task is not
+already modifying that file, the answer is never `now` — not even for a one-word
+rename, not even if the file is open in context because it was read. "I am standing
+here" means "this file is in my diff".
+
+**When in doubt, choose `next`.** Deferring too much is a cost the user can see and
+work through; hijacking their task to clean something up is a cost they cannot. If
+the four conditions require any argument at all to satisfy, they are not satisfied.
+
+Then follow **The `now` Path** below.
+
+### `next` — record it and carry on
+
+The default, and where the large majority of observations belong. Everything real
+that isn't a `now`: anything in a file this task isn't touching, anything needing a
+design decision, anything bigger than a few lines, anything a reviewer might want to
+discuss.
+
+Record it with `record.py` (see **How to Record**) and continue the task. Do **not**
+stop the current work to fix it.
+
+### `never` — don't carry it at all
+
+Not everything noticed is worth a line in a backlog. A backlog full of items nobody
+will ever action is exactly the graveyard this skill exists to avoid, and each entry
+costs attention on every future read. Drop it silently — no record, no transcript
+note — when it is:
+
+- In generated code, vendored dependencies, or build artifacts
+- A style preference with no objective impact (formatting, brace style, import order)
+- Something the current task is already fixing
+- Already recorded in `.claude/boy-scout-todos.jsonl` (the recorder deduplicates, but
+  a near-duplicate reworded slightly will get through — check first)
+- A restatement of what the project's linter or type checker already reports
+- Speculative ("this might need to scale one day") rather than observed
+
+If an item **already in the backlog** turns out to be one of these, close it rather
+than leaving it to rot — see **Closing an Item Already Recorded**.
+
+## The `now` Path
+
+A `now` fix is a real refactoring, so it obeys the same rules as any other one.
+
+1. **Only on green.** Finish and verify the current behavioural change first. Never
+   interrupt a red-green cycle to clean something up — a failing test must fail for
+   one reason at a time.
+2. **Make the fix.**
+3. **Hard stop if it grows.** If the fix turns out not to be small once started — it
+   touches a second file, needs a test change, or you find yourself making a judgment
+   call — `git checkout` the cleanup, record it as `next`, and move on. This is the
+   main failure mode of the `now` path, and abandoning is always the right call.
+   Backing out is not a failure; it is the gate working late.
+4. **Re-verify.** Run the relevant tests again. If they fail, **revert the fix** and
+   record it as `next` instead. Do not debug an opportunistic cleanup; it has already
+   cost more than it was worth.
+5. **Commit it separately**, never folded into the feature commit:
+
+   ```
+   refactor(billing): rename tmp to pending_invoice
+   ```
+
+   Its own commit keeps the feature diff clean and keeps the cleanup independently
+   revertable. If the current work isn't being committed at all, leave the fix in the
+   working tree — but keep it a separate, described change.
+6. **Record it, marked fixed.** An on-the-spot fix is still recorded: what got
+   recorded versus what got resolved is how this plugin knows whether it is working,
+   and `now` fixes are the only entries on the good side of that ratio.
+
+   ```bash
+   python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
+     --type naming \
+     --file src/billing/invoice.py \
+     --lines 34 \
+     --description "tmp held a validated PendingInvoice; renamed to pending_invoice" \
+     --severity low \
+     --outcome fixed
+   ```
+
+   If the backlog already had an entry for this issue, `--outcome fixed` closes that
+   entry instead of adding a second one.
+7. **One line in the transcript**, in the same understated tone as a deferral:
+
+   > *(Boy Scout: renamed `tmp` to `pending_invoice` while here.)*
+
+   Not a section, not a list, not a celebration. Then continue the original task.
 
 ## How to Record
 
@@ -236,14 +344,38 @@ On success, the script prints a confirmation JSON and exits 0:
 ```json
 {
   "id": "a3f9c12e",
+  "is_new": true,
+  "outcome": null,
   "position": 4,
   "message": "Recorded opportunity #4: [duplication] src/routes/auth.rs — ..."
 }
 ```
 
 The opportunity is appended to `.claude/boy-scout-todos.jsonl` in the project's
-`.claude/` directory. It will appear in the Boy Scout session summary at the
-end of the current Claude session.
+`.claude/` directory. Open items appear in the Boy Scout summary at the end of the
+current Claude session; items closed with an outcome do not.
+
+## Closing an Item Already Recorded
+
+When an earlier opportunity is dealt with — fixed during a Boy Scout session, decided
+against, or overtaken by events — close it by id:
+
+```bash
+python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/resolve.py" \
+  --id a3f9c12e \
+  --outcome fixed \
+  [--note "Extracted parse_json_body(); suite green"]
+```
+
+| Outcome | Use when… |
+|---------|-----------|
+| `fixed` | The code was changed and the change was verified |
+| `wontfix` | A real observation the project has decided not to act on (say why in `--note`) |
+| `stale` | It no longer applies — the code moved on, or the finding was wrong |
+
+Always close items with this script. Never hand-edit
+`.claude/boy-scout-todos.jsonl`: hooks append to it under a file lock that an editor
+does not respect, so an edit can silently drop a concurrently recorded item.
 
 ## Tone in the Transcript
 
@@ -252,11 +384,8 @@ no interruption to the main flow:
 
 > *(Boy Scout: noted duplication in `src/routes/auth.rs:88-104` for later.)*
 
-Then continue with the original task.
+For a `now` fix, the same understatement, in the past tense:
 
-## What Not to Record
+> *(Boy Scout: renamed `tmp` to `pending_invoice` while here.)*
 
-- Issues already present in `.claude/boy-scout-todos.jsonl` (avoid duplicates)
-- Opportunities in generated code, vendored dependencies, or build artifacts
-- Style preferences without objective impact (formatting, brace style)
-- Issues the current task is already fixing
+One line either way. Then continue with the original task.
