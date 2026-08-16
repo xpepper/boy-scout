@@ -92,6 +92,22 @@ def is_blank_or_comment(line: str, language: str) -> bool:
     return any(stripped.startswith(p) for p in prefixes)
 
 
+def code_only(line: str, language: str) -> str:
+    """The part of a line that is code: literals emptied, trailing comment cut.
+
+    Anything looking for identifiers has to work on this rather than on the raw
+    line, or the word `tmp` inside a log message reads as a variable in need of
+    a rename.
+    """
+    without_literals = re.sub(r'"[^"]*"', '""', line)
+    without_literals = re.sub(r"'[^']*'", "''", without_literals)
+    for prefix in COMMENT_PREFIXES.get(language, ("//", "#", "--")):
+        head, marker, _ = without_literals.partition(prefix)
+        if marker:
+            without_literals = head
+    return without_literals
+
+
 def normalize_line(line: str) -> str:
     """Strip and collapse whitespace; replace literals and numbers for comparison."""
     line = line.strip()

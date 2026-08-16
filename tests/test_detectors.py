@@ -1,4 +1,8 @@
-from detectors import detect_duplication, detect_test_coverage_gap
+from detectors import (
+    detect_duplication,
+    detect_naming_clarity,
+    detect_test_coverage_gap,
+)
 
 _DUPLICATED = '''\
 def load_alpha(path):
@@ -184,6 +188,49 @@ def test_duplication_still_finds_a_real_copy_past_a_self_similar_run(tmp_path):
     assert len(findings) == 1
     first, second = findings[0]["locations"]
     assert first["line_end"] < second["line_start"]
+
+
+def test_naming_does_not_flag_the_builtin_type_str(tmp_path):
+    """`str2?` in the abbreviation list made every `Dict[str, str]` annotation a
+    naming finding. It fired in all eleven source files of this repository. A
+    builtin type is not a badly named variable.
+    """
+    source = tmp_path / "render.py"
+    source.write_text(
+        "from typing import Dict\n\n\n"
+        "def render(rows: Dict[str, str]) -> Dict[str, str]:\n"
+        "    return {key: value for key, value in rows.items()}\n"
+    )
+
+    assert detect_naming_clarity(str(source), {}) == []
+
+
+def test_naming_looks_at_code_rather_than_at_strings_and_comments(tmp_path):
+    """The scan ran over raw line text, so an abbreviation inside a message or
+    a trailing comment read as an identifier that needed renaming.
+    """
+    source = tmp_path / "announce.py"
+    source.write_text(
+        "def announce(message):\n"
+        '    print("writing to tmp before the swap")  # the buf is flushed here\n'
+        "    return message\n"
+    )
+
+    assert detect_naming_clarity(str(source), {}) == []
+
+
+def test_naming_still_flags_a_genuinely_abbreviated_binding(tmp_path):
+    source = tmp_path / "loader.py"
+    source.write_text(
+        "def load(path):\n"
+        "    tmp = read_bytes(path)\n"
+        "    return tmp\n"
+    )
+
+    findings = detect_naming_clarity(str(source), {})
+
+    assert len(findings) == 1
+    assert "tmp" in findings[0]["description"]
 
 
 def test_test_coverage_gap_is_recorded_as_a_file_level_finding(tmp_path):

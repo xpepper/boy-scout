@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from pattern_analyzer import (
+    code_only,
     detect_language,
     is_blank_or_comment,
     is_literal_only,
@@ -171,9 +172,11 @@ ALLOWED_SHORT: frozenset = frozenset(
     "i j k n x y z e f t v ok _ err".split()
 )
 
-# Common cryptic abbreviations worth flagging
+# Common cryptic abbreviations worth flagging. `str` is deliberately absent:
+# it is a builtin type in most of the supported languages, so flagging it makes
+# every `Dict[str, str]` annotation a naming finding.
 ABBREVIATION_RE = re.compile(
-    r"\b(tmp|temp|buf|str2?|obj|arr|lst|dct|cnt|num|idx|ptr|"
+    r"\b(tmp|temp|buf|obj|arr|lst|dct|cnt|num|idx|ptr|"
     r"mgr|svc|ctrl|util|misc|res|ret|cb|fn2?|d[0-9]?)\b",
     re.IGNORECASE,
 )
@@ -202,10 +205,14 @@ def detect_naming_clarity(file_path: str, config: Dict) -> List[Dict]:
     findings = []
     seen: set = set()
 
-    for i, line in enumerate(lines):
+    for i, raw_line in enumerate(lines):
         line_num = i + 1
-        if is_blank_or_comment(line, language):
+        if is_blank_or_comment(raw_line, language):
             continue
+
+        # Identifiers only live in the code part of the line: a trailing
+        # comment or a message string is prose, not something to rename.
+        line = code_only(raw_line, language)
 
         # Single-character identifiers via binding pattern
         if binding_re:
