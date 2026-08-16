@@ -1,84 +1,71 @@
-"""The line-level scanners every detector reads through.
+"""What the anchors compare against.
 
-They decide what counts as code, and each of the false positives that made
-static detection too noisy to recommend came from one of them getting that
-wrong. They were covered only through the detectors until now, which meant an
-edge case could only be described in terms of a finding it happened to cause.
+An entry's fingerprint is a hash of the significant lines it points at. So
+whether an anchor survives a reformat, and whether it stays put through a
+rename of something nearby, is decided entirely by these two functions rather
+than by anything in `anchors.py`.
 """
-from pattern_analyzer import code_lines, code_only, is_literal_only, normalize_line
+from pattern_analyzer import (
+    detect_language,
+    is_blank_or_comment,
+    normalize_line,
+    significant_lines,
+)
 
 
-def _numbered(source: str, language: str = "python"):
-    return [line_number for line_number, _ in code_lines(source, language)]
+class TestNormalizeLine:
+    def test_collapses_whitespace_so_reformatting_is_not_a_rewrite(self):
+        assert normalize_line("a  =   b") == normalize_line("a = b")
+
+    def test_ignores_leading_indentation(self):
+        assert normalize_line("        return value") == normalize_line("return value")
+
+    def test_masks_string_literals(self):
+        assert normalize_line('log("started")') == normalize_line('log("finished")')
+
+    def test_masks_numbers(self):
+        assert normalize_line("retry(3)") == normalize_line("retry(17)")
+
+    def test_still_separates_different_code(self):
+        assert normalize_line("total = price * rate") != normalize_line("total = price + rate")
 
 
-class TestCodeOnly:
-    def test_empties_string_literals(self):
-        assert "tmp" not in code_only('log("writing to tmp")', "python")
-
-    def test_cuts_a_trailing_comment(self):
-        assert code_only("value = 1  # the buf is flushed", "python").strip() == "value = 1"
-
-    def test_keeps_the_code_around_them(self):
-        assert "staged" in code_only('staged = write("tmp")  # here', "python")
-
-    def test_uses_the_comment_marker_of_the_language(self):
-        """`--` opens a comment in Elm and nothing in Python."""
-        assert code_only("value = 1 -- a note", "elm").strip() == "value = 1"
-        assert code_only("value = 1 -- a note", "python").strip() == "value = 1 -- a note"
-
-
-class TestCodeLines:
+class TestSignificantLines:
     def test_skips_blanks_and_comments(self):
-        assert _numbered("value = 1\n\n# a note\nother = 2\n") == [1, 4]
+        source = "value = 1\n\n# a note\nother = 2\n"
 
-    def test_skips_the_interior_of_a_docstring(self):
-        source = (
-            "def stage(path):\n"
-            '    """Write to a tmp file.\n'
-            "\n"
-            "    The buf is flushed first.\n"
-            '    """\n'
-            "    return path\n"
-        )
-
-        assert _numbered(source) == [1, 6]
-
-    def test_a_single_line_docstring_leaves_the_scanner_closed(self):
-        source = 'def stage(path):\n    """Write it."""\n    return path\n\n\nother = 1\n'
-
-        assert _numbered(source) == [1, 3, 6]
-
-    def test_a_quote_inside_a_string_does_not_open_a_block(self):
-        """`DELIMITERS = ('\"\"\"',)` is a tuple, not an unterminated docstring.
-        Reading it as one swallows the rest of the file.
-        """
-        source = 'DELIMITERS = (\'"""\', "`")\nvalue = 1\nother = 2\n'
-
-        assert _numbered(source) == [1, 2, 3]
-
-    def test_a_backtick_block_spans_lines_in_javascript(self):
-        """Line 3 closes the template literal and still carries the `;`."""
-        source = "const query = `\n  SELECT 1\n`;\nconst total = 2;\n"
-
-        assert _numbered(source, "javascript") == [1, 3, 4]
+        assert significant_lines(source, "python") == [(1, "value = n"), (4, "other = n")]
 
     def test_reports_one_based_line_numbers(self):
-        assert _numbered("first = 1\n") == [1]
+        """The numbers go straight into an entry's `locations`, which humans
+        read against their editor.
+        """
+        assert significant_lines("first = 1\n", "python")[0][0] == 1
+
+    def test_uses_the_comment_marker_of_the_language(self):
+        """`--` is a comment in Elm and `#` is not."""
+        assert significant_lines("-- a note\nvalue = 1\n", "elm") == [(2, "value = n")]
+        assert significant_lines("# a note\nvalue = 1\n", "elm") != [(2, "value = n")]
+
+    def test_an_unknown_language_falls_back_to_the_common_markers(self):
+        assert significant_lines("// a note\nvalue = 1\n", "unknown") == [(2, "value = n")]
 
 
-class TestIsLiteralOnly:
-    def test_a_table_entry_carries_no_identifier(self):
-        assert is_literal_only(normalize_line('    ".rs": "rust",'))
+class TestDetectLanguage:
+    def test_maps_a_known_extension(self):
+        assert detect_language("src/billing/invoice.py") == "python"
 
-    def test_a_line_of_prose_carries_no_identifier(self):
-        assert is_literal_only(normalize_line('    "Run the tests first."'))
+    def test_is_case_insensitive(self):
+        assert detect_language("Main.PY") == "python"
 
-    def test_an_interpolation_prefix_is_part_of_the_literal(self):
-        assert is_literal_only(normalize_line('    f"There are {count} entries."'))
+    def test_an_unknown_extension_is_not_a_language(self):
+        assert detect_language("notes.xyz") == "unknown"
 
-    def test_a_call_is_not_literal_only(self):
-        assert not is_literal_only(normalize_line('    log("writing to tmp")'))
 
-    def test_an_assignment_of_a_literal_is_not_literal_only(self):
-        assert not is_literal_only(normalize_line('    name = "rust"'))
+class TestIsBlankOrComment:
+    def test_blank_and_whitespace_only_lines(self):
+        assert is_blank_or_comment("", "python")
+        assert is_blank_or_comment("   \t ", "python")
+
+    def test_a_trailing_comment_is_not_a_comment_line(self):
+        assert not is_blank_or_comment("value = 1  # a note", "python")
