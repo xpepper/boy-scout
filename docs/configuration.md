@@ -57,6 +57,12 @@ exchange for mechanical coverage. Start with a single pattern:
 
 An unrecognised level falls back to `balanced`.
 
+"Max function lines" counts what there is to read, not how far the function
+reaches: in Python, where the detector has an AST, blank lines, comments and
+the docstring are all excluded. The other languages have no such structure to
+lean on, so there the threshold is compared against the lines the declaration
+spans, and the finding says which of the two it measured.
+
 ## `session`
 
 | Key | Default | What it does |
