@@ -1,15 +1,16 @@
 # Boy Scout — Improvement Opportunities
 
-Last reviewed 2026-08-16, on branch `feat/anchor-staleness`.
+Last reviewed 2026-08-16, on branch `feat/install-and-dogfood`.
 
 The plugin's goal is **opportunistic refactoring**: the thing TDD skills skip,
 because they optimise the red-green-refactor loop of the *current* task and keep
 no memory of what they noticed along the way.
 
 The capture half is solid, the act-on-it half now exists (focused agents, one per
-item), and entries no longer quietly stop describing their code. What is left is
-mostly about *timing* — surfacing a finding while acting on it is still cheap —
-and about ranking findings by something better than an asserted severity.
+item), and entries no longer quietly stop describing their code. What is left
+falls in three groups: the static detectors are too noisy to recommend turning
+on, findings still surface after the cheap moment to act has passed, and they
+are ranked by an asserted severity rather than anything measured.
 
 ---
 
@@ -32,6 +33,85 @@ and about ranking findings by something better than an asserted severity.
 | `function_size` silently dead for Elm | Offside-rule sizing for Elm |
 | README carried the mechanics | README is the pitch; mechanics in `docs/how-it-works.md` |
 | Entries silently stopped describing their code | Anchored at record time; `boy-scout-list` flags drift, `boy-scout-verify --apply` repairs it |
+| Install meant symlinking into `~/.claude/plugins` by hand | The repo is its own marketplace: `/plugin marketplace add xpepper/boy-scout` |
+
+---
+
+## From running the plugin on its own source
+
+Installed into this repository and pointed at `hooks/`, `scripts/` and
+`skills/` with every static detector enabled: **57 findings across ~1,500 lines**,
+the large majority of them false. That ratio is the finding. The causes below
+are what a user turning `patterns` on for the first time would actually meet,
+and they are why the detectors are still opt-in.
+
+Verified separately, and working: `bin/` really is on `PATH` in a live session,
+`boy-scout-record` runs by bare name from the skill, the entry lands anchored,
+and the Stop hook fires and writes its timestamp.
+
+### D1. `str` is flagged as a cryptic abbreviation, in every Python file
+
+`ABBREVIATION_RE` contains `str2?`, so every `Dict[str, str]` annotation is a
+naming finding. It fired in **all eleven** source files. A builtin type is not a
+badly named variable.
+
+The same list contains `res`, `num`, `idx`, `cnt` — plausible as variable names,
+but the regex matches them anywhere on the line, including inside string
+literals and comments (already recorded as 7.1). Both want the scan to run on
+identifiers rather than on raw line text.
+
+### D2. Duplication reports a block as duplicating itself
+
+```
+pattern_analyzer.py: Duplicated block (16 lines): lines 10–25 and 11–26
+stop-hook.py:        Duplicated block (11 lines): lines 24–34 and 25–35
+record.py:           Duplicated block (12 lines): lines 44–55 and 45–56
+```
+
+Every one of those is a single dict or set literal — `LANGUAGE_MAP`,
+`TYPE_LABEL`, `VALID_TYPES` — matching itself shifted by one line. After
+normalisation each entry line becomes the same shape (`".S": "S",`), so the
+sliding window matches its own neighbour.
+
+`detect_duplication` checks that a *new* pair does not overlap pairs already
+reported, but never checks that the two halves of a pair do not overlap **each
+other**. Requiring `second_start > first_end` would remove five of the six
+duplication findings here. This is a bug, not a tuning problem.
+
+### D3. Normalised literals make any two runs of strings look identical
+
+`boy_scout_session.py: Duplicated block (9 lines): lines 44–52 and 53–61` — two
+disjoint halves of one prompt string. `normalize_line` masks every string
+literal to `"S"`, so consecutive lines of prose are indistinguishable. Masking
+is what lets near-copies match; it also means data and text match each other.
+Skipping windows whose normalised lines are all literal-only would keep the
+recall that masking buys without the false positives.
+
+### D4. Test discovery does not bridge `-` and `_`
+
+`hooks/post-tool-use.py` is reported as untested. Its tests are in
+`tests/test_post_tool_use.py` — Python module names cannot contain hyphens, so
+the test file underscores what the script hyphenates. `_find_test_file` looks
+for `test_post-tool-use.py` and finds nothing.
+
+Also flagged: `hooks/lib/__init__.py`, an empty package marker with nothing to
+test.
+
+### D5. Docstrings count toward function size
+
+`function_size` fired on 20 of roughly 60 functions at the default threshold.
+The Python path measures `end_lineno - lineno`, which includes the docstring, so
+a 9-line function carrying a 12-line docstring reads as 22 lines and gets
+flagged for decomposition. Punishing documentation is the wrong incentive, and
+it is what makes the default threshold look badly chosen. Subtract the docstring
+node before comparing.
+
+### D6. `record-opportunity` costs ~330 tokens of every session
+
+`claude plugin details` puts the plugin's always-on cost at ~792 tokens, ~330 of
+which is the `record-opportunity` description — it is long because it lists
+trigger phrases, and that length is what makes the skill fire at the right
+moments. Worth knowing and worth watching; not obviously worth cutting.
 
 ---
 
@@ -117,6 +197,10 @@ than keeping them in sync by hand.
 
 ## Suggested sequencing
 
+0. **The detector precision bugs (D1, D2, D4, D5)** — all four are small and
+   mechanical, and together they are most of the noise a first-time user meets
+   when they enable `patterns`. Until they are fixed, the honest advice about
+   static detection is "leave it off", which makes half the plugin decorative.
 1. **Just-in-time surfacing (1)** — largest behaviour change for the least new
    machinery, and the data layer is already built.
 2. **Renames (2)** — small, and it stops `--apply` closing entries it should
