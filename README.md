@@ -28,11 +28,13 @@ Findings → .claude/boy-scout-       Injects summary into Claude's
            (silent, no transcript)  (inform-only, doesn't block)
 ```
 
-Claude also records **semantic** opportunities it notices during work (via the `record-opportunity` skill), complementing the static hook-based detection.
+Claude also records **semantic** opportunities it notices during work (via the `record-opportunity` skill). This is the primary channel: static detectors are mechanical proxies (line counts, regexes) that trade precision for recall, so they're **opt-in** and disabled by default — see [Configuration](#configuration).
 
 ---
 
 ## Detectors
+
+⚠️ **Disabled by default.** These are threshold-based heuristics (line counts, regexes) — high recall, low precision. A fine 22-line function gets flagged as often as a genuinely tangled one. Enable individual detectors in `.claude/boy-scout-config.json` if you want mechanical detection on top of Claude's own semantic judgment (`record-opportunity`, which is always active).
 
 Ordered by priority:
 
@@ -73,7 +75,7 @@ The plugin auto-creates `.claude/boy-scout-config.json` with defaults on first r
 {
   "detection": {
     "enabled": true,
-    "patterns": ["duplication", "naming", "test_coverage", "function_size"],
+    "patterns": [],
     "sensitivity": "balanced",
     "ignore_paths": [
       "vendor/",
@@ -89,10 +91,16 @@ The plugin auto-creates `.claude/boy-scout-config.json` with defaults on first r
     "suppress_transcript": true
   },
   "session": {
-    "auto_clear": false
+    "auto_clear": false,
+    "triage_threshold": 20
   }
 }
 ```
+
+`patterns` defaults to `[]` — no static detector runs until you add one, e.g.
+`"patterns": ["test_coverage"]`. `session.triage_threshold` controls when the
+Stop hook adds a "backlog has grown" nudge to its summary (see
+[How the Stop Hook Fires](#how-the-stop-hook-fires)).
 
 ### Sensitivity levels
 
@@ -124,6 +132,13 @@ Opportunities are persisted in `.claude/boy-scout-todos.jsonl` (line-delimited J
 
 `source` is either `"hook"` (static detection) or `"skill"` (Claude's semantic observation).
 
+**Deduplication:** before appending, a new finding is checked against existing
+*open* (non-dismissed) entries with the same `type`, `file_path`, and an
+overlapping line range. If one matches, its `id` is reused and nothing new is
+written — repeatedly touching the same file doesn't re-record the same issue
+on every edit. Once an entry is dismissed, the same issue can be recorded
+again if it resurfaces.
+
 ---
 
 ## The `record-opportunity` Skill
@@ -154,7 +169,46 @@ This means no special action is needed. The workflow is:
    💡 All items are saved in .claude/boy-scout-todos.jsonl.
       Start a Boy Scout session whenever you're ready to address them incrementally.
    ```
-4. **Boy Scout session** — when ready, ask Claude to work through `.claude/boy-scout-todos.jsonl`, addressing each opportunity one at a time
+   If the **open** (non-dismissed) backlog has reached `session.triage_threshold`
+   (default 20), the summary gains one more block:
+   ```
+   ⚠️  Backlog has grown to 25 open items (triage threshold: 20).
+      Run a Boy Scout session — or dismiss stale items — before it stops being trustworthy.
+   ```
+   This nudge only ever rides along with an actual new-findings summary — it
+   never fires on an idle Stop event by itself, so it can't turn into a nag.
+4. **Boy Scout session** — when ready, ask Claude to work through `.claude/boy-scout-todos.jsonl`, addressing each opportunity one at a time, or run one headlessly on a schedule — see [Scheduled Resolution](#scheduled-resolution)
+
+---
+
+## Scheduled Resolution
+
+Manually starting a "Boy Scout session" still depends on remembering to do
+it — which just relocates the forgetting problem from *the finding* to *the
+backlog file*. `scripts/run-boy-scout-session.sh` closes that loop: it runs
+a headless session (`claude -p`) against the open backlog and exits cleanly
+if there's nothing to do.
+
+```bash
+CLAUDE_PROJECT_DIR=/path/to/project ./scripts/run-boy-scout-session.sh
+```
+
+Each run addresses up to 5 of the highest-severity open items, verifying and
+committing each individually, marking its entry `"dismissed": true` when
+done. It never pushes.
+
+**Wiring it to a schedule:**
+
+- **cron** —
+  ```cron
+  0 9 * * 1-5 CLAUDE_PROJECT_DIR=/path/to/project /path/to/boy-scout/scripts/run-boy-scout-session.sh >> /tmp/boy-scout.log 2>&1
+  ```
+- **launchd** (macOS) — wrap the same command in a `LaunchAgent` plist with a `StartCalendarInterval`.
+- **Superpowers' `schedule` skill** — if you use the [Superpowers](https://github.com/obra/superpowers) plugin, `/schedule` can create a cron-driven cloud agent that runs this script on a recurring cadence without you managing cron yourself.
+
+Review what a scheduled session actually did (`git log`, the updated
+`.claude/boy-scout-todos.jsonl`) before trusting it unattended — start with a
+manual run first.
 
 ---
 
@@ -176,10 +230,25 @@ boy-scout/
 │   └── record-opportunity/
 │       ├── SKILL.md             # Skill definition (proactive semantic recording)
 │       └── record.py            # CLI handler invoked by Claude
+├── scripts/
+│   ├── boy_scout_session.py     # Builds/runs a headless session prompt
+│   └── run-boy-scout-session.sh # Cron/launchd-friendly wrapper
 ├── schema/
 │   └── todo-item.json           # JSON schema for TODO entries
+├── tests/                       # pytest suite for lib/scripts behavior
 └── README.md
 ```
+
+---
+
+## Testing
+
+```bash
+python3 -m pytest tests/
+```
+
+No third-party test dependencies beyond `pytest` itself (dev-only; the
+plugin remains zero-dependency at runtime).
 
 ---
 
