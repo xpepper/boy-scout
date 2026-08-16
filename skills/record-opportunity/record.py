@@ -75,16 +75,25 @@ def main() -> None:
     if args.context:
         todo["context"] = args.context
 
-    todo_id = add_todo(project_dir, todo)
-    total   = len(list_todos(project_dir))
+    todo_id, is_new = add_todo(project_dir, todo)
+    total = len(list_todos(project_dir))
+
+    if is_new:
+        message = (
+            f"Recorded opportunity #{total}: [{args.type}] {args.file} — "
+            f"{args.description} (id: {todo_id})"
+        )
+    else:
+        message = (
+            f"Already tracked as [{args.type}] {args.file} (id: {todo_id}) — "
+            "skipped duplicate, an open entry for this file and line range exists"
+        )
 
     result = {
         "id":       todo_id,
+        "is_new":   is_new,
         "position": total,
-        "message":  (
-            f"Recorded opportunity #{total}: [{args.type}] {args.file} — "
-            f"{args.description} (id: {todo_id})"
-        ),
+        "message":  message,
     }
     print(json.dumps(result, indent=2))
 
