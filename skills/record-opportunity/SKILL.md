@@ -33,8 +33,9 @@ So this skill does two things, in this order:
 1. **Triage** the observation — `now`, `next`, or `never`.
 2. **Act**: make the fix (rare), record it for later (usual), or drop it.
 
-It complements the passive hook-based detection: hooks catch structural issues via
-static analysis; this skill captures what only having done the work reveals.
+This is the only way anything enters the backlog. Static analysis is the
+project's linter's job, and duplicating it here is explicitly a `never` (see
+below); what this skill captures is what only having done the work reveals.
 
 ## When to Trigger
 

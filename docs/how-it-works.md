@@ -1,31 +1,30 @@
 # How it works
 
-Two channels feed one backlog, and one command drains it.
+One channel feeds the backlog, and one command drains it.
 
 ```
 During your task                    End of session
 ─────────────────                   ──────────────
-Write / Edit a file                 Claude finishes responding
+Claude notices something            Claude finishes responding
        │                                    │
        ▼                                    ▼
-PostToolUse hook fires              Stop hook fires
-       │                                    │
-       ▼                                    ▼
-Detectors run on the file           Reads new items since last run
-       │                                    │
-       ▼                                    ▼
-Findings → .claude/boy-scout-       Injects a summary into Claude's
-           todos.jsonl              context via systemMessage
-           (silent, no transcript)  (inform-only, doesn't block)
+record-opportunity triages it       Stop hook fires
+  now / next / never                        │
+       │                                    ▼
+       ▼                            Reads new items since last run
+`now`  → fixed here, own commit             │
+`next` → .claude/boy-scout-                 ▼
+          todos.jsonl              Injects a summary into Claude's
+`never`→ dropped, silently         context via systemMessage
+                                   (inform-only, doesn't block)
 ```
 
-## Channel 1: what Claude noticed (the primary one)
+## Recording: what Claude noticed
 
-Claude records semantic opportunities through the `record-opportunity` skill,
-proactively, while doing something else. This is the channel that matters,
-because it captures what only having done the work reveals: a refactor step
-skipped to keep a change small, three files read to answer one question, a
-compromise made deliberately in this very diff.
+Claude records opportunities through the `record-opportunity` skill,
+proactively, while doing something else. This captures what only having done
+the work reveals: a refactor step skipped to keep a change small, three files
+read to answer one question, a compromise made deliberately in this very diff.
 
 Each observation is triaged into `now`, `next` or `never`. Most become `next`.
 A small, obvious, uncontroversial fix in a file Claude is **already editing**
@@ -34,18 +33,26 @@ rather than filing a report about the litter. The full gate, and the rules an
 on-the-spot fix has to obey, are in
 [`skills/record-opportunity/SKILL.md`](../skills/record-opportunity/SKILL.md).
 
-## Channel 2: what the static detectors found (opt-in)
+### Why there is no static analysis here
 
-Mechanical proxies — line counts and regexes — that trade precision for recall.
-They are disabled by default; see [configuration.md](configuration.md) to turn
-one on.
+Earlier versions ran detectors on every file write — duplication by line
+hashing, naming by regex, function size by line count. That channel is gone.
 
-| Detector | What it finds | Languages |
-|----------|--------------|-----------|
-| `duplication` | Copy-pasted blocks (≥6 lines by default) | Any file the hook reads |
-| `naming` | Single-char identifiers, cryptic abbreviations | Rust, Elm, JS/TS, Python, Go |
-| `test_coverage` | Source file changed but no test file found | Rust, Elm, JS/TS, Python, Go, Ruby, Java, Kotlin, Swift |
-| `function_size` | Functions exceeding the line threshold | Python, Elm, Rust, JS/TS, Go |
+It produced what a linter produces, and the skill's own `never` rule says to
+drop "a restatement of what the project's linter or type checker already
+reports". So the plugin was recording exactly what it told itself not to.
+Worse, it competed on ground it could never win: ruff, clippy, ESLint and
+jscpd have years of tuning, per-rule configuration, autofix and editor
+integration behind them.
+
+A precision pass fixed six real bugs in those detectors and cut false
+positives on this repository's own source from 57 to 29. What survived was
+`p = Path(...)` and "this function is 21 lines" — rules you would disable in
+ruff. That measurement is why the channel was removed rather than tuned
+further.
+
+The signal that is genuinely unavailable to a linter is what an agent knows
+from having done the work, and that is what is left.
 
 ## Surfacing: the Stop hook
 
@@ -56,10 +63,14 @@ hand. When items have piled up since the last summary, the reply ends with:
 ```
 🏕️  Boy Scout report: 4 new refactoring opportunities detected.
 
-  🟡 [Duplication] src/routes/auth.rs: Duplicated block (17 lines): lines 88–104 and 45–61
-  🟢 [Naming]      src/pipeline/process.ts: Abbreviated identifier 'tmp' …
-  🟡 [No tests]    src/billing/invoice.py: No test file found for invoice.py …
-  🟢 [Long function] src/compiler/lower.ts: Function 'lowerExpr' spans 80 lines …
+  🔴 [Self-inflicted debt] src/billing/invoice.py: inlined the tax lookup rather than
+     threading `rates` through three call sites, to keep this diff reviewable
+  🟡 [Comprehension cost]  src/auth/session.rs: read Session, TokenStore and Clock to
+     find out what refresh() returns on expiry — the answer is in none of them
+  🟡 [Skipped refactor]    src/pipeline/process.ts: green without step 5; parseBody and
+     parseHeaders ended up the same function with different names
+  🟢 [Test smell]          tests/test_orders.py: passes alone, fails after test_refunds —
+     shared module-level fixture
 
 💡 /boy-scout to review the backlog · /boy-scout-session to have a focused
    agent address items one at a time, each verified and committed on its own.

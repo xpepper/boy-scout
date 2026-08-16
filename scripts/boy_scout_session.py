@@ -59,7 +59,7 @@ def build_session_prompt(project_dir: str) -> Optional[str]:
         "  3. Commit it individually with a conventional commit message.\n"
         "  4. Close that entry once committed, by id:\n"
         "       boy-scout-resolve --id <id> --outcome fixed\n"
-        "     Never edit .claude/boy-scout-todos.jsonl by hand: the detection hook "
+        "     Never edit .claude/boy-scout-todos.jsonl by hand: boy-scout-record "
         "appends to it under a lock while you work.\n\n"
         "Abandon an item — `git restore` your changes, leave the entry open, and "
         "move to the next — as soon as it stops being small: it needs a design "

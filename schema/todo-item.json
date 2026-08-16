@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "BoyScoutTodoItem",
-  "description": "A refactoring opportunity detected by Boy Scout hooks or recorded by Claude.",
+  "description": "A refactoring opportunity Claude recorded while working on something else.",
   "type": "object",
   "required": ["id", "type", "file_path", "locations", "description", "severity", "detected_at", "source", "dismissed"],
   "properties": {
@@ -59,7 +59,7 @@
     "source": {
       "type": "string",
       "enum": ["hook", "skill"],
-      "description": "Whether detected automatically (hook) or recorded by Claude (skill)"
+      "description": "Always 'skill' on new entries: Claude's own observation via record-opportunity. 'hook' is retained so entries written by the static detectors earlier versions shipped stay readable; nothing produces it any more."
     },
     "dismissed": {
       "type": "boolean",
