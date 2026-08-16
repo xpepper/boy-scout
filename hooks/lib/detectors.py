@@ -434,6 +434,24 @@ def _detect_elm_declaration_size(
     return findings
 
 
+def _docstring_lines(node: ast.AST) -> int:
+    """How many lines of a function are taken up by its docstring.
+
+    Sizing a function by `end_lineno - lineno` counts the docstring as body, so
+    a short function carrying a long one reads as needing decomposition. That
+    punishes documentation, which is the opposite of what the detector is for.
+    """
+    body = getattr(node, "body", [])
+    if not body:
+        return 0
+    first = body[0]
+    if not isinstance(first, ast.Expr) or not isinstance(first.value, ast.Constant):
+        return 0
+    if not isinstance(first.value.value, str):
+        return 0
+    return getattr(first, "end_lineno", first.lineno) - first.lineno + 1
+
+
 def detect_function_size(file_path: str, config: Dict) -> List[Dict]:
     """Flag functions whose body exceeds the configured line threshold."""
     max_lines = _thresholds(config)["max_func_lines"]
@@ -454,14 +472,14 @@ def detect_function_size(file_path: str, config: Dict) -> List[Dict]:
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 start = node.lineno
                 end = getattr(node, "end_lineno", start)
-                size = end - start + 1
+                size = end - start + 1 - _docstring_lines(node)
                 if size > max_lines:
                     findings.append({
                         "type": "function_size",
                         "locations": [{"line_start": start, "line_end": end}],
                         "severity": "medium" if size > max_lines * 2 else "low",
                         "description": (
-                            f"Function '{node.name}' spans {size} lines "
+                            f"Function '{node.name}' spans {size} lines of code "
                             f"(threshold: {max_lines}) — consider decomposing"
                         ),
                     })

@@ -317,6 +317,67 @@ def test_a_missing_test_is_still_reported_when_the_tree_exists(tmp_path):
     assert len(detect_test_coverage_gap(str(source), {}, str(tmp_path))) == 1
 
 
+_DOCUMENTED_PYTHON = '''\
+def resolve(entry, outcome, note):
+    """Close a recorded opportunity.
+
+    The backlog answers one question — how much of what was recorded ever got
+    improved — and it can only answer that if entries reach a terminal state
+    rather than being deleted, hand-edited, or left open forever.
+
+    Args:
+        entry: the opportunity to close. Must already be in the backlog; a
+            caller holding only a description should record it first.
+        outcome: one of `fixed`, `wontfix`, `stale`. `fixed` means the code
+            changed and the change was verified. `wontfix` means the project
+            decided against it. `stale` means it no longer applies.
+        note: what the fix was, when that is not obvious from the entry's
+            own description. Required in practice for `wontfix`.
+
+    Returns:
+        The updated entry, with `outcome` and `resolved_at` filled in.
+
+    Raises:
+        KeyError: if no entry with this id is in the backlog.
+    """
+    entry["outcome"] = outcome
+    entry["note"] = note
+    entry["resolved_at"] = now()
+    return entry
+'''
+
+
+def test_function_size_does_not_count_the_docstring(tmp_path):
+    """The Python path measured `end_lineno - lineno`, which includes the
+    docstring, so a four-line function carrying a twelve-line docstring read as
+    eighteen lines and got flagged for decomposition. Punishing documentation
+    is the wrong incentive, and it is what made the default threshold look
+    badly chosen.
+    """
+    from detectors import detect_function_size
+
+    source = tmp_path / "resolve.py"
+    source.write_text(_DOCUMENTED_PYTHON)
+
+    assert detect_function_size(str(source), {}) == []
+
+
+def test_function_size_still_reports_a_long_documented_function(tmp_path):
+    """Excluding the docstring must not exempt a function that is long on its
+    own account.
+    """
+    from detectors import detect_function_size
+
+    body = "".join(f"    step_{i}()\n" for i in range(25))
+    source = tmp_path / "orchestrate.py"
+    source.write_text(f'def orchestrate():\n    """Run every step."""\n{body}')
+
+    findings = detect_function_size(str(source), {})
+
+    assert len(findings) == 1
+    assert "orchestrate" in findings[0]["description"]
+
+
 _LONG_ELM = """\
 module Compiler.Lower exposing (lowerExpr)
 
