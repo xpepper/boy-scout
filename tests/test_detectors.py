@@ -238,6 +238,26 @@ def test_naming_does_not_read_docstrings_as_code(tmp_path):
     assert detect_naming_clarity(str(source), {}) == []
 
 
+def test_naming_is_not_desynchronised_by_quotes_inside_a_string(tmp_path):
+    """A quote character quoted inside another string is not an unterminated
+    docstring. Treating it as one swallows the rest of the file, and then the
+    next real docstring reads as the *end* of a string rather than the start of
+    one — so every docstring after it is scanned as code.
+    """
+    source = tmp_path / "delimiters.py"
+    source.write_text(
+        'DELIMITERS = (\'"""\', "\\\'\\\'\\\'", "`")\n'
+        "\n"
+        "\n"
+        "def stage(path):\n"
+        '    """Write to a tmp file, then swap it into place."""\n'
+        "    staged = write_staging_copy(path)\n"
+        "    return swap(staged)\n"
+    )
+
+    assert detect_naming_clarity(str(source), {}) == []
+
+
 def test_naming_still_flags_a_genuinely_abbreviated_binding(tmp_path):
     source = tmp_path / "loader.py"
     source.write_text(
@@ -377,6 +397,22 @@ def test_function_size_does_not_count_the_docstring(tmp_path):
 
     source = tmp_path / "resolve.py"
     source.write_text(_DOCUMENTED_PYTHON)
+
+    assert detect_function_size(str(source), {}) == []
+
+
+def test_function_size_does_not_count_blank_lines_and_comments(tmp_path):
+    """A function is long when there is a lot of code to hold in your head, not
+    when it is spaced out and explained. Counting the gaps inflates every
+    well-commented function toward the threshold.
+    """
+    from detectors import detect_function_size
+
+    phases = "".join(
+        f"\n    # phase {i}\n    step_{i}(context)\n" for i in range(9)
+    )
+    source = tmp_path / "orchestrate.py"
+    source.write_text(f"def orchestrate(context):\n{phases}\n    return context\n")
 
     assert detect_function_size(str(source), {}) == []
 

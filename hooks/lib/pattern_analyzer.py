@@ -121,25 +121,42 @@ def normalize_line(line: str) -> str:
     return line.lower()
 
 
-# Delimiters that open a string literal running past the end of the line.
-_MULTILINE_DELIMITERS = ('"""', "'''", "`")
-
-
 def _opens_multiline_string(line: str) -> Optional[Tuple[str, int]]:
-    """The multi-line delimiter this line leaves open, and where it starts."""
-    cursor = 0
-    while True:
-        delimiter, position = None, len(line)
-        for candidate in _MULTILINE_DELIMITERS:
-            index = line.find(candidate, cursor)
-            if index != -1 and index < position:
-                delimiter, position = candidate, index
-        if delimiter is None:
-            return None
-        closing = line.find(delimiter, position + len(delimiter))
-        if closing == -1:
-            return delimiter, position
-        cursor = closing + len(delimiter)
+    """The multi-line delimiter this line leaves open, and where it starts.
+
+    Scans the line rather than searching it, because a delimiter can appear
+    inside an ordinary string — `DELIMITERS = ('\"\"\"', \"'''\")` opens nothing.
+    Searching finds the inner one, declares the rest of the file to be inside a
+    docstring, and then reads the next real docstring as the end of it.
+    """
+    index, length = 0, len(line)
+    while index < length:
+        char = line[index]
+        if char == "\\":
+            index += 2
+            continue
+        if char not in "\"'`":
+            index += 1
+            continue
+
+        triple = line[index : index + 3]
+        if triple in ('"""', "'''"):
+            closing = line.find(triple, index + 3)
+            if closing == -1:
+                return triple, index
+            index = closing + 3
+            continue
+
+        cursor = index + 1
+        while cursor < length and line[cursor] != char:
+            cursor += 2 if line[cursor] == "\\" else 1
+        if cursor >= length:
+            # Only a backtick keeps a single-delimiter string open past the end
+            # of the line; an unterminated quote is a syntax error, not a block.
+            return (char, index) if char == "`" else None
+        index = cursor + 1
+
+    return None
 
 
 def code_lines(content: str, language: str) -> List[Tuple[int, str]]:
