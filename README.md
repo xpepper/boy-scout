@@ -254,6 +254,17 @@ plugin remains zero-dependency at runtime).
 
 ---
 
+## Contributing
+
+`main` is protected — direct pushes aren't accepted, only pull requests. Before a PR can merge:
+
+- All 4 CI matrix jobs must pass (`pytest` on ubuntu-latest/macos-latest × Python 3.10/3.12 — see [Testing](#testing)).
+- The branch must be up to date with `main` (GitHub will ask you to update if it's behind).
+
+No specific reviewer approval count is enforced — this keeps the gate meaningful without requiring self-approval on a single-maintainer repo.
+
+---
+
 ## Debugging
 
 Run hooks manually to test them:
