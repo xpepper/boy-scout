@@ -95,6 +95,10 @@ def is_blank_or_comment(line: str, language: str) -> bool:
 def normalize_line(line: str) -> str:
     """Strip and collapse whitespace; replace literals and numbers for comparison."""
     line = line.strip()
+    # Collapsing runs of whitespace is what makes this comparison survive
+    # reformatting — `a  =  b` and `a = b` are the same line for both the
+    # duplication detector and the staleness anchors.
+    line = re.sub(r"\s+", " ", line)
     line = re.sub(r'"[^"]*"', '"S"', line)
     line = re.sub(r"'[^']*'", "'S'", line)
     line = re.sub(r"\b\d+\b", "N", line)
