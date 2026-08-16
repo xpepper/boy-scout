@@ -105,6 +105,22 @@ def normalize_line(line: str) -> str:
     return line.lower()
 
 
+# The tokens `normalize_line` leaves behind in place of literals.
+_MASKED_TOKEN_RE = re.compile(r"\"s\"|'s'|\bn\b")
+
+
+def is_literal_only(normalized: str) -> bool:
+    """Whether a normalized line carries no identifier — only masked literals.
+
+    `normalize_line` replaces every string with `"S"` and every number with
+    `N`, which is what lets near-copies survive edits. It also means unrelated
+    text matches unrelated text: two halves of one prompt string, or two
+    entries of one lookup table, normalize identically. A line with nothing
+    left but masked literals carries no evidence either way.
+    """
+    return not re.search(r"[a-z_]", _MASKED_TOKEN_RE.sub("", normalized))
+
+
 def significant_lines(content: str, language: str) -> List[Tuple[int, str]]:
     """Return (1-based line number, normalized content) for non-blank, non-comment lines."""
     result = []

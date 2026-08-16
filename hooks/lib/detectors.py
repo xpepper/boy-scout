@@ -18,6 +18,7 @@ from typing import Dict, List, Optional, Tuple
 from pattern_analyzer import (
     detect_language,
     is_blank_or_comment,
+    is_literal_only,
     is_test_file,
     normalize_line,
     read_content,
@@ -67,6 +68,12 @@ def detect_duplication(file_path: str, config: Dict) -> List[Dict]:
     buckets: Dict[int, List[Tuple[int, int, int]]] = {}
     for i in range(len(sig) - min_lines + 1):
         window = sig[i : i + min_lines]
+        # A window of nothing but masked literals matches any other such
+        # window, related or not. Two genuinely copy-pasted tables are lost
+        # with it, which is the price of not reporting every lookup table and
+        # every long string as a duplicate of itself.
+        if all(is_literal_only(norm) for _, norm in window):
+            continue
         block_text = "\n".join(norm for _, norm in window)
         h = hash(block_text)
         buckets.setdefault(h, []).append((i, window[0][0], window[-1][0]))

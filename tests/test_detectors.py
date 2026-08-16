@@ -106,6 +106,72 @@ def test_duplication_never_reports_a_block_as_duplicating_itself(tmp_path):
     assert findings == []
 
 
+_TABLE_LITERAL = '''\
+LANGUAGE_MAP = {
+    ".rs": "rust",
+    ".elm": "elm",
+    ".js": "javascript",
+    ".jsx": "javascript",
+    ".ts": "typescript",
+    ".tsx": "typescript",
+    ".py": "python",
+    ".go": "go",
+    ".rb": "ruby",
+    ".java": "java",
+    ".c": "c",
+    ".cpp": "cpp",
+    ".cs": "csharp",
+    ".swift": "swift",
+    ".kt": "kotlin",
+}
+
+
+def detect_language(file_path):
+    extension = Path(file_path).suffix.lower()
+    return LANGUAGE_MAP.get(extension, "unknown")
+'''
+
+_PROSE_BLOCK = '''\
+def build_prompt(item):
+    return (
+        "You are addressing one recorded opportunity."
+        "Read the entry before you touch anything."
+        "Run the tests first and confirm they pass."
+        "Make the smallest change that resolves it."
+        "Run the tests again."
+        "Commit it on its own."
+        "Do not fold it into another change."
+        "Back out rather than pushing through."
+        "Report what you did and what you verified."
+        "Close the entry with an outcome."
+        "Stop there."
+        "Say so if it stopped being small."
+    )
+'''
+
+
+def test_duplication_ignores_a_table_of_unrelated_literals(tmp_path):
+    """Normalisation masks every string to the same token, so two halves of one
+    lookup table are indistinguishable from a copy-paste. Masking is what buys
+    the recall; a window carrying nothing but masked literals is where it costs
+    more than it buys.
+    """
+    source = tmp_path / "languages.py"
+    source.write_text(_TABLE_LITERAL)
+
+    assert detect_duplication(str(source), {}) == []
+
+
+def test_duplication_ignores_consecutive_lines_of_prose(tmp_path):
+    """Same cause, the shape a user meets most: any two runs of a long prompt
+    string normalise identically and were reported as duplicated.
+    """
+    source = tmp_path / "prompt.py"
+    source.write_text(_PROSE_BLOCK)
+
+    assert detect_duplication(str(source), {}) == []
+
+
 def test_duplication_still_finds_a_real_copy_past_a_self_similar_run(tmp_path):
     """Rejecting self-overlap must not throw away the genuine match that lies
     further down the same hash bucket.
