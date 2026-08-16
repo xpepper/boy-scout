@@ -40,6 +40,22 @@ def _record(project_dir, **kwargs):
     return json.loads(result.stdout)
 
 
+def _resolve(project_dir, **kwargs):
+    """Invoke resolve.py as a subprocess and return its parsed JSON output."""
+    argv = [sys.executable, str(_RESOLVE)]
+    for key, value in kwargs.items():
+        argv += [f"--{key.replace('_', '-')}", value]
+
+    result = subprocess.run(
+        argv,
+        capture_output=True,
+        text=True,
+        env={"CLAUDE_PROJECT_DIR": str(project_dir), "PATH": "/usr/bin:/bin"},
+    )
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout)
+
+
 def test_distinct_file_level_findings_are_both_recorded(tmp_path):
     """Two unrelated file-level findings of the same type in the same file are
     two findings, not one. Without --lines there is no line anchor to tell them
@@ -313,3 +329,32 @@ def test_skill_md_guards_the_now_path():
 def _read_entries(project_dir):
     path = Path(project_dir) / ".claude" / "boy-scout-todos.jsonl"
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+
+
+def test_recording_something_already_written_off_says_so(tmp_path):
+    """Reusing the "already tracked" wording would tell Claude the item is
+    sitting in the backlog when it was in fact declined — and Claude would
+    keep re-recording it, or worse, go and fix it.
+    """
+    first = _record(
+        tmp_path,
+        type="naming",
+        file="src/x.py",
+        lines="12",
+        description="single-letter loop variable",
+        severity="low",
+    )
+    _resolve(tmp_path, id=first["id"], outcome="wontfix", note="idiomatic here")
+
+    again = _record(
+        tmp_path,
+        type="naming",
+        file="src/x.py",
+        lines="12",
+        description="single-letter loop variable",
+        severity="low",
+    )
+
+    assert again["is_new"] is False
+    assert again["id"] == first["id"]
+    assert "wontfix" in again["message"]

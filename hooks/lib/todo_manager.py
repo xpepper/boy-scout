@@ -33,17 +33,37 @@ DEFAULT_CONFIG: Dict = {
         ],
         "ignore_tests": False,
     },
-    "output": {
-        "suppress_transcript": True,
-    },
     "session": {
-        "auto_clear": False,
         # When the open (non-dismissed) backlog exceeds this size, the Stop
         # hook adds a triage nudge to its summary instead of letting the
         # backlog grow silently forever.
         "triage_threshold": 20,
     },
 }
+
+
+PROJECT_MARKERS = (".git", ".claude")
+
+
+def find_project_dir(start: Optional[str] = None) -> str:
+    """Resolve which project's backlog we are reading or writing.
+
+    Hooks get `CLAUDE_PROJECT_DIR` exported to them and it always wins. The
+    CLIs do not: they run through the Bash tool, whose environment carries no
+    CLAUDE_* variables at all, and whose working directory is wherever the
+    session last happened to be. Falling back to the working directory alone
+    would scatter a second backlog under every subdirectory Claude cd'd into,
+    so walk up to the nearest project marker first.
+    """
+    from_env = os.environ.get("CLAUDE_PROJECT_DIR")
+    if from_env:
+        return from_env
+
+    current = Path(start or os.getcwd()).resolve()
+    for candidate in (current, *current.parents):
+        if any((candidate / marker).exists() for marker in PROJECT_MARKERS):
+            return str(candidate)
+    return str(current)
 
 
 def _claude_dir(project_dir: str) -> Path:
@@ -131,17 +151,43 @@ def _same_finding(entry: Dict, todo: Dict) -> bool:
     return _locations_overlap(entry_locations, todo_locations)
 
 
-def _find_open_duplicate(project_dir: str, todo: Dict) -> Optional[str]:
-    """Return the id of an existing, open (non-dismissed) TODO describing the
-    same issue in the same file, if any.
+def _suppresses_rerecording(entry: Dict) -> bool:
+    """Whether an existing entry means a matching finding must not be recorded.
+
+    An open entry does, obviously: that is deduplication. A `wontfix` entry
+    does too, and this is the whole point of the outcome — the detection hook
+    re-runs over the entire file on every edit, so without it the item the
+    project just declined reappears immediately and the decision means nothing.
+
+    `fixed` and `stale` deliberately do not. A smell that comes back after
+    being fixed is news, not a duplicate.
     """
-    for entry in list_todos(project_dir):
+    if not entry.get("dismissed"):
+        return True
+    return entry.get("outcome") == "wontfix"
+
+
+def _find_open_duplicate(project_dir: str, todo: Dict) -> Optional[str]:
+    """Return the id of an existing TODO that already covers this finding, if
+    any — see `_suppresses_rerecording` for what "already covers" means.
+    """
+    for entry in list_todos(project_dir, include_dismissed=True):
+        if not _suppresses_rerecording(entry):
+            continue
         if entry.get("type") != todo.get("type"):
             continue
         if entry.get("file_path") != todo.get("file_path"):
             continue
         if _same_finding(entry, todo):
             return entry.get("id")
+    return None
+
+
+def get_todo(project_dir: str, todo_id: str) -> Optional[Dict]:
+    """Return a single entry by id, open or closed, or None if there isn't one."""
+    for entry in list_todos(project_dir, include_dismissed=True):
+        if entry.get("id") == todo_id:
+            return entry
     return None
 
 

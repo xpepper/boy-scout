@@ -13,17 +13,30 @@ echo '{"tool_input": {"file_path": "src/main.rs"}}' \
 echo '{}' | CLAUDE_PROJECT_DIR=$(pwd) python3 hooks/stop-hook.py
 
 # Record an opportunity manually
-CLAUDE_PROJECT_DIR=$(pwd) CLAUDE_PLUGIN_ROOT=$(pwd) \
-  python3 skills/record-opportunity/record.py \
-    --type custom \
-    --file src/main.rs \
-    --description "Test entry" \
-    --severity low
+CLAUDE_PROJECT_DIR=$(pwd) bin/boy-scout-record \
+  --type custom \
+  --file src/main.rs \
+  --description "Test entry" \
+  --severity low
 ```
 
 `CLAUDE_PROJECT_DIR` decides where `.claude/boy-scout-todos.jsonl` and the
 config file are read from and written to, so point it at a scratch directory
 if you do not want to pollute a real backlog.
+
+## Why the CLIs live in `bin/`
+
+Claude Code exports `$CLAUDE_PLUGIN_ROOT` and `$CLAUDE_PROJECT_DIR` to *hooks*.
+It does not export them to the Bash tool, which is where the
+`record-opportunity` skill runs its commands — a command written as
+`python3 "$CLAUDE_PLUGIN_ROOT/…/record.py"` expands to a path with an empty
+first segment and fails.
+
+Claude Code does put every installed plugin's `bin/` directory on `PATH`, so
+the wrappers there are callable by bare name. Each one resolves the plugin from
+its own location, and `todo_manager.find_project_dir()` resolves the project by
+walking up from the working directory to the nearest `.git` or `.claude`, with
+`$CLAUDE_PROJECT_DIR` overriding both when it is set.
 
 Notes on interpreting the output:
 

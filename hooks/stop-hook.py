@@ -59,15 +59,15 @@ def _format_summary(todos: list, open_count: int, triage_threshold: int) -> str:
 
     lines += [
         "",
-        "💡 All items are saved in .claude/boy-scout-todos.jsonl.",
-        "   Start a Boy Scout session whenever you're ready to address them incrementally.",
+        "💡 /boy-scout to review the backlog · /boy-scout-session to have a focused",
+        "   agent address items one at a time, each verified and committed on its own.",
     ]
 
     if open_count >= triage_threshold:
         lines += [
             "",
             f"⚠️  Backlog has grown to {open_count} open items (triage threshold: {triage_threshold}).",
-            "   Run a Boy Scout session — or dismiss stale items — before it stops being trustworthy.",
+            "   Run /boy-scout-session, or close the stale ones, before it stops being trustworthy.",
         ]
 
     return "\n".join(lines)

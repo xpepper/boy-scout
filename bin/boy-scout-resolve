@@ -1,0 +1,6 @@
+#!/bin/sh
+# Close a Boy Scout opportunity by id, with an outcome.
+# Locates the plugin from its own path — see boy-scout-record for why.
+set -e
+BIN_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+exec python3 "$BIN_DIR/../skills/record-opportunity/resolve.py" "$@"

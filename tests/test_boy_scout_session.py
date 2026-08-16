@@ -47,7 +47,7 @@ def test_build_session_prompt_summarizes_open_items(tmp_path):
     assert prompt is not None
     assert "2" in prompt  # total open count somewhere in the prompt
     assert "boy-scout-todos.jsonl" in prompt
-    assert "dismissed" in prompt.lower()  # instructs marking items done
+    assert "--outcome fixed" in prompt  # instructs closing items once done
     assert "do not push" in prompt.lower() or "don't push" in prompt.lower()
 
 
@@ -75,6 +75,39 @@ def test_prompt_closes_items_via_resolve_script_not_by_hand_editing(tmp_path):
 
     prompt = boy_scout_session.build_session_prompt(str(tmp_path))
 
-    assert "resolve.py" in prompt
+    assert "boy-scout-resolve" in prompt
     assert "--outcome fixed" in prompt
     assert 'Set that entry\'s "dismissed" field to true' not in prompt
+
+
+def test_prompt_requires_a_green_baseline_before_touching_anything(tmp_path):
+    """Unattended, on a cron, "the tests pass" is worthless without a
+    before-picture: the session cannot otherwise tell "I broke it" from "it
+    was already broken", and it commits either way.
+    """
+    boy_scout_session = _load_module()
+    _add_todo(str(tmp_path), description="something worth fixing")
+
+    prompt = boy_scout_session.build_session_prompt(str(tmp_path)).lower()
+
+    assert "baseline" in prompt
+    assert "stop" in prompt
+
+
+def test_prompt_tells_the_session_to_back_out_rather_than_push_through(tmp_path):
+    boy_scout_session = _load_module()
+    _add_todo(str(tmp_path), description="something worth fixing")
+
+    prompt = boy_scout_session.build_session_prompt(str(tmp_path)).lower()
+
+    assert "revert" in prompt or "restore" in prompt
+    assert "do not push" in prompt
+
+
+def test_prompt_points_at_the_backlog_reader_not_at_the_raw_file(tmp_path):
+    boy_scout_session = _load_module()
+    _add_todo(str(tmp_path), description="something worth fixing")
+
+    prompt = boy_scout_session.build_session_prompt(str(tmp_path))
+
+    assert "boy-scout-list" in prompt

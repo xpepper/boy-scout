@@ -11,24 +11,24 @@ Writing the outcome through this script rather than hand-editing
 a file lock, and an editor does not respect that lock.
 
 Usage:
-    python3 resolve.py --id a3f9c12e --outcome fixed \\
+    boy-scout-resolve --id a3f9c12e --outcome fixed \\
         [--note "Extracted parse_json_body(); tests green"]
 """
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 
-# Resolve hooks/lib from CLAUDE_PLUGIN_ROOT so the script works regardless of
-# where the plugin is installed.
-_plugin_root = os.environ.get(
-    "CLAUDE_PLUGIN_ROOT",
-    str(Path(__file__).parent.parent.parent),  # …/skills/record-opportunity → plugin root
-)
-sys.path.insert(0, str(Path(_plugin_root) / "hooks" / "lib"))
+# Locate hooks/lib from this file, not from $CLAUDE_PLUGIN_ROOT — see record.py.
+_PLUGIN_ROOT = Path(__file__).resolve().parent.parent.parent
+sys.path.insert(0, str(_PLUGIN_ROOT / "hooks" / "lib"))
 
-from todo_manager import VALID_OUTCOMES, list_todos, resolve_todo  # noqa: E402
+from todo_manager import (  # noqa: E402
+    VALID_OUTCOMES,
+    find_project_dir,
+    list_todos,
+    resolve_todo,
+)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -41,7 +41,7 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = _parse_args()
-    project_dir = os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
+    project_dir = find_project_dir()
 
     if not resolve_todo(project_dir, args.id, args.outcome, note=args.note or None):
         print(

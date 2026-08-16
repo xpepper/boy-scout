@@ -23,11 +23,7 @@ Full defaults:
     ],
     "ignore_tests": false
   },
-  "output": {
-    "suppress_transcript": true
-  },
   "session": {
-    "auto_clear": false,
     "triage_threshold": 20
   }
 }
@@ -61,17 +57,10 @@ exchange for mechanical coverage. Start with a single pattern:
 
 An unrecognised level falls back to `balanced`.
 
-## `output`
-
-| Key | Default | What it does |
-|-----|---------|--------------|
-| `suppress_transcript` | `true` | Reserved. The PostToolUse hook currently suppresses its output unconditionally, so changing this has no effect today. |
-
 ## `session`
 
 | Key | Default | What it does |
 |-----|---------|--------------|
-| `auto_clear` | `false` | Reserved. Nothing reads it yet. |
 | `triage_threshold` | `20` | When the open (non-dismissed) backlog has reached this many items, the Stop hook appends a "backlog has grown" nudge to its summary. The nudge only ever rides along with an actual new-findings summary, so it cannot turn into a nag on idle stops. |
 
 ## Detectors in detail
@@ -81,7 +70,7 @@ An unrecognised level falls back to `balanced`.
 | `duplication` | Copy-pasted blocks, found by hashing a sliding window over normalised lines (literals and numbers are masked, so near-copies still match) | Any file the hook accepts; accuracy is best where comment syntax is known (Rust, Elm, JS/TS, Python, Go, and friends) |
 | `naming` | Single-character identifiers, plus a list of cryptic abbreviations (`tmp`, `buf`, `mgr`, `res`, …) | Single-character detection: Rust, Elm, JS/TS, Python, Go. The abbreviation scan runs on any file. |
 | `test_coverage` | A source file was modified and no matching test file exists next to it or under `tests/`, `test/`, `spec/`, `__tests__/`, `specs/`, `src/tests/` | Rust, Elm, JS/TS, Python, Go, Ruby, Java, Kotlin, Swift |
-| `function_size` | Functions longer than the sensitivity threshold | Python (via the `ast` module), Rust, JS/TS, Go (regex plus brace counting) |
+| `function_size` | Functions longer than the sensitivity threshold | Python (via the `ast` module), Elm (offside rule), Rust, JS/TS, Go (regex plus brace counting) |
 
 When several are enabled, they run in priority order: duplication, naming,
 test coverage, function size. Language support is prioritised in the order

@@ -1,0 +1,6 @@
+#!/bin/sh
+# Show the open Boy Scout backlog and how much of it has been acted on.
+# Locates the plugin from its own path — see boy-scout-record for why.
+set -e
+BIN_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+exec python3 "$BIN_DIR/../scripts/list_backlog.py" "$@"

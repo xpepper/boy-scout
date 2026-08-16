@@ -1,5 +1,5 @@
 ---
-name: Record Boy Scout Opportunity
+name: record-opportunity
 description: >
   This skill should be used proactively, without waiting for the user to ask, whenever
   Claude notices a refactoring opportunity, code smell, or improvement while working
@@ -64,9 +64,16 @@ below.
   unrelated to what it names. Usually noticed *while running the suite*, which is
   precisely when it can be recorded.
 - **Repeated friction** (`repeated_friction`): The same region worked around again —
-  this session, or in a previous one. Before recording, check the existing backlog
-  for entries on the same file: a second or third finding in one region is shotgun
-  surgery announcing itself, and is worth more than any of the findings alone.
+  this session, or in a previous one. Before recording, check what the backlog
+  already holds for that file:
+
+  ```bash
+  boy-scout-list --file src/api/handlers.go
+  ```
+
+  A second or third finding in one region is shotgun surgery announcing itself,
+  and is worth more than any of the findings alone. Record *that*, rather than
+  adding a fourth entry beside them.
 
 ### The generic categories
 
@@ -117,8 +124,13 @@ that isn't a `now`: anything in a file this task isn't touching, anything needin
 design decision, anything bigger than a few lines, anything a reviewer might want to
 discuss.
 
-Record it with `record.py` (see **How to Record**) and continue the task. Do **not**
+Record it with `boy-scout-record` (see **How to Record**) and continue the task. Do **not**
 stop the current work to fix it.
+
+Recording is not filing and forgetting: the user can later run
+`/boy-scout-session`, which dispatches a focused agent per item. So write the
+entry for that reader — someone arriving cold, weeks from now, with no memory of
+this session.
 
 ### `never` — don't carry it at all
 
@@ -168,7 +180,7 @@ A `now` fix is a real refactoring, so it obeys the same rules as any other one.
    and `now` fixes are the only entries on the good side of that ratio.
 
    ```bash
-   python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
+   boy-scout-record \
      --type naming \
      --file src/billing/invoice.py \
      --lines 34 \
@@ -187,10 +199,10 @@ A `now` fix is a real refactoring, so it obeys the same rules as any other one.
 
 ## How to Record
 
-Run the `record.py` script via Bash, filling in the appropriate arguments:
+Run `boy-scout-record` via Bash, filling in the appropriate arguments:
 
 ```bash
-python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
+boy-scout-record \
   --type      <type>         \
   --file      <relative/path/to/file.rs> \
   --description "<intent-revealing description>" \
@@ -198,6 +210,13 @@ python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
   [--lines    <start>-<end>]  \
   [--context  "<suggested approach>"]
 ```
+
+`boy-scout-record` and `boy-scout-resolve` come from the plugin's `bin/`
+directory, which Claude Code puts on `PATH`. Both work out which project's
+backlog to write to on their own, from the working directory. If either is
+somehow not on `PATH`, call the script directly instead — it is
+`skills/record-opportunity/record.py` inside the plugin — and do not fall back
+to editing `.claude/boy-scout-todos.jsonl` by hand.
 
 ### Arguments
 
@@ -213,7 +232,7 @@ python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
 | `--note` | optional | string | What the fix was, if it isn't obvious from the description |
 
 To close an item recorded *earlier*, or to close one as `wontfix` or `stale`, use
-`resolve.py` instead — see **Closing an Item Already Recorded**.
+`boy-scout-resolve` instead — see **Closing an Item Already Recorded**.
 
 ### Severity Guide
 
@@ -223,122 +242,11 @@ To close an item recorded *earlier*, or to close one as `wontfix` or `stale`, us
 | `medium` | The issue adds friction; addressing it would clearly improve the code |
 | `low` | Minor polish — nice to have but not urgent |
 
-## Examples
-
-**Reached green, skipped the refactor:**
-```bash
-python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
-  --type skipped_refactor \
-  --file src/billing/invoice.py \
-  --lines 120-165 \
-  --description "apply_discount() passed its new test as a fourth branch in the same if-chain; the chain wants to be a strategy lookup but the change was already large" \
-  --severity medium \
-  --context "Replace the if-chain with a DISCOUNT_RULES dict keyed by discount kind"
-```
-
-**Understanding it cost too much:**
-```bash
-python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
-  --type comprehension_cost \
-  --file src/auth/session.rs \
-  --lines 44-70 \
-  --description "Had to read session.rs, token_store.rs and clock.rs to find out that refresh() returns None on an expired token rather than an error" \
-  --severity high \
-  --context "Return an explicit Result<Token, SessionExpired> so the outcome is readable at the call site"
-```
-
-**A compromise made in this task:**
-```bash
-python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
-  --type self_inflicted_debt \
-  --file src/report/render.ts \
-  --lines 88 \
-  --description "Read the locale from the module-level config instead of threading it through renderRow(), to keep this diff to one file" \
-  --severity medium \
-  --context "Thread locale from buildReport() down to renderRow() and drop the module-level read"
-```
-
-**A test that is a problem in itself:**
-```bash
-python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
-  --type test_smell \
-  --file tests/test_checkout.py \
-  --lines 30-95 \
-  --description "test_checkout_flow mocks the repository, the clock and the mailer, so it asserts on call order rather than on the order being placed; it passes when the behaviour is wrong" \
-  --severity high \
-  --context "Use a real in-memory repository and a fixed clock; assert on the resulting order"
-```
-
-**The same region, again:**
-```bash
-python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
-  --type repeated_friction \
-  --file src/api/handlers.go \
-  --description "Third session in a row that adding an endpoint required editing this file plus routes.go plus errors.go in lockstep" \
-  --severity high \
-  --context "The three files share one concept; consider a per-endpoint module that owns its route, handler and errors"
-```
-
-**Duplicated parsing logic:**
-```bash
-python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
-  --type duplication \
-  --file src/routes/auth.rs \
-  --lines 88-104 \
-  --description "JSON body parsing logic duplicated from src/routes/users.rs:45-61" \
-  --severity medium \
-  --context "Extract to a shared parse_json_body<T>() helper in src/util/http.rs"
-```
-
-**Function doing too much:**
-```bash
-python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
-  --type function_size \
-  --file src/compiler/lower.elm \
-  --lines 200-280 \
-  --description "lowerExpr handles literals, lambdas, and let-bindings in a single 80-line match" \
-  --severity medium \
-  --context "Split into lowerLiteral, lowerLambda, lowerLet following the existing pattern"
-```
-
-**Misleading name:**
-```bash
-python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
-  --type naming \
-  --file src/pipeline/process.ts \
-  --lines 34 \
-  --description "Variable 'data' holds a validated UserProfile, not raw data — rename to userProfile" \
-  --severity low
-```
-
-**Missing tests:**
-```bash
-python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
-  --type test_coverage \
-  --file src/billing/invoice.py \
-  --description "Invoice.apply_discount() has no tests; edge cases around negative discounts are untested" \
-  --severity high
-```
-
-**Leaky abstraction:**
-```bash
-python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
-  --type wrong_abstraction \
-  --file src/storage/repo.rs \
-  --lines 12-40 \
-  --description "UserRepo returns raw SQL rows, so callers depend on the schema" \
-  --severity high \
-  --context "Map rows to a User domain type at the repo boundary"
-```
-
-**Dead code:**
-```bash
-python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
-  --type dead_code \
-  --file src/legacy/parser.js \
-  --description "Commented-out v1 parser left below the v2 implementation" \
-  --severity low
-```
+A worked example for each type is in
+[`references/examples.md`](references/examples.md). Read it when unsure how much
+detail an entry should carry — the difference between a description that could
+have been written without doing the work and one that says what the work
+revealed is the whole value of the record.
 
 ## Output
 
@@ -364,7 +272,7 @@ When an earlier opportunity is dealt with — fixed during a Boy Scout session, 
 against, or overtaken by events — close it by id:
 
 ```bash
-python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/resolve.py" \
+boy-scout-resolve \
   --id a3f9c12e \
   --outcome fixed \
   [--note "Extracted parse_json_body(); suite green"]
