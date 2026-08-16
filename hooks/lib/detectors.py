@@ -9,15 +9,16 @@ leave every module a little better than you found it.
 Language priority: Rust, Elm, JavaScript/TypeScript, Python (others best-effort).
 """
 import ast
-import fnmatch
-import os
 import re
+from bisect import bisect_left, bisect_right
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from pattern_analyzer import (
+    code_lines,
     detect_language,
     is_blank_or_comment,
+    is_literal_only,
     is_test_file,
     normalize_line,
     read_content,
@@ -67,13 +68,30 @@ def detect_duplication(file_path: str, config: Dict) -> List[Dict]:
     buckets: Dict[int, List[Tuple[int, int, int]]] = {}
     for i in range(len(sig) - min_lines + 1):
         window = sig[i : i + min_lines]
+        # A window of nothing but masked literals matches any other such
+        # window, related or not. Two genuinely copy-pasted tables are lost
+        # with it, which is the price of not reporting every lookup table and
+        # every long string as a duplicate of itself.
+        if all(is_literal_only(norm) for _, norm in window):
+            continue
         block_text = "\n".join(norm for _, norm in window)
         h = hash(block_text)
         buckets.setdefault(h, []).append((i, window[0][0], window[-1][0]))
 
     def _extend_match(i: int, j: int) -> Tuple[int, int]:
-        """Extend a matched pair (sig indices i, j) as far forward as possible."""
-        while i < len(sig) and j < len(sig) and sig[i][1] == sig[j][1]:
+        """Extend a matched pair (sig indices i, j) as far forward as possible.
+
+        Extension stops before the first block can reach the second one. A run
+        of similar-looking lines — the entries of a table literal, say — would
+        otherwise let the first block grow past where the second begins, and a
+        block that overlaps its own copy is not a copy.
+        """
+        second_start_idx = j
+        while (
+            i < second_start_idx
+            and j < len(sig)
+            and sig[i][1] == sig[j][1]
+        ):
             i += 1
             j += 1
         first_end  = sig[i - 1][0]
@@ -83,16 +101,35 @@ def detect_duplication(file_path: str, config: Dict) -> List[Dict]:
     def _block(idx: int) -> List[str]:
         return [norm for _, norm in sig[idx : idx + min_lines]]
 
+    def _first_disjoint_pair(
+        occurrences: List[Tuple[int, int, int]]
+    ) -> Optional[Tuple[int, int]]:
+        """The earliest pair of occurrences whose windows do not overlap.
+
+        Consecutive windows in a self-similar run share a hash while covering
+        almost the same lines. Skipping to the first genuinely disjoint partner
+        rejects those without discarding a real copy that sits further down the
+        same bucket.
+        """
+        i_idx = occurrences[0][0]
+        for j_idx, _, _ in occurrences[1:]:
+            if j_idx >= i_idx + min_lines:
+                return i_idx, j_idx
+        return None
+
     # Collect all duplicate pairs (extended to max coverage), sort by first start.
     all_pairs: List[Tuple[int, int, int, int]] = []  # (fs, fe, ss, se)
     for h, occurrences in buckets.items():
         if len(occurrences) >= 2:
-            i_idx, fs, _ = occurrences[0]
-            j_idx, ss, _ = occurrences[1]
+            pair = _first_disjoint_pair(occurrences)
+            if pair is None:
+                continue
+            i_idx, j_idx = pair
             # A shared hash is only a candidate: confirm the blocks really are
             # identical before reporting them as duplicated.
             if _block(i_idx) != _block(j_idx):
                 continue
+            fs, ss = sig[i_idx][0], sig[j_idx][0]
             fe, se = _extend_match(i_idx, j_idx)
             all_pairs.append((fs, fe, ss, se))
     all_pairs.sort()
@@ -134,9 +171,11 @@ ALLOWED_SHORT: frozenset = frozenset(
     "i j k n x y z e f t v ok _ err".split()
 )
 
-# Common cryptic abbreviations worth flagging
+# Common cryptic abbreviations worth flagging. `str` is deliberately absent:
+# it is a builtin type in most of the supported languages, so flagging it makes
+# every `Dict[str, str]` annotation a naming finding.
 ABBREVIATION_RE = re.compile(
-    r"\b(tmp|temp|buf|str2?|obj|arr|lst|dct|cnt|num|idx|ptr|"
+    r"\b(tmp|temp|buf|obj|arr|lst|dct|cnt|num|idx|ptr|"
     r"mgr|svc|ctrl|util|misc|res|ret|cb|fn2?|d[0-9]?)\b",
     re.IGNORECASE,
 )
@@ -152,6 +191,16 @@ BINDING_PATTERNS: Dict[str, re.Pattern] = {
 }
 
 
+def _naming_finding(line_num: int, description: str) -> Dict:
+    """A `naming` finding: always one line, always low severity."""
+    return {
+        "type": "naming",
+        "locations": [{"line_start": line_num, "line_end": line_num}],
+        "severity": "low",
+        "description": description,
+    }
+
+
 def detect_naming_clarity(file_path: str, config: Dict) -> List[Dict]:
     """Flag single-character identifiers and cryptic abbreviations."""
     content = read_content(file_path)
@@ -161,14 +210,12 @@ def detect_naming_clarity(file_path: str, config: Dict) -> List[Dict]:
     language = detect_language(file_path)
     max_issues = _thresholds(config)["max_naming_issues"]
     binding_re = BINDING_PATTERNS.get(language)
-    lines = content.splitlines()
     findings = []
     seen: set = set()
 
-    for i, line in enumerate(lines):
-        line_num = i + 1
-        if is_blank_or_comment(line, language):
-            continue
+    # Identifiers only live in the code part of a file: a comment, a message
+    # string or a docstring is prose, not something to rename.
+    for line_num, line in code_lines(content, language):
 
         # Single-character identifiers via binding pattern
         if binding_re:
@@ -176,30 +223,22 @@ def detect_naming_clarity(file_path: str, config: Dict) -> List[Dict]:
                 name = m.group(1)
                 if len(name) == 1 and name.lower() not in ALLOWED_SHORT and name not in seen:
                     seen.add(name)
-                    findings.append({
-                        "type": "naming",
-                        "locations": [{"line_start": line_num, "line_end": line_num}],
-                        "severity": "low",
-                        "description": (
-                            f"Single-character identifier '{name}' — "
-                            "consider a name that reveals intent"
-                        ),
-                    })
+                    findings.append(_naming_finding(
+                        line_num,
+                        f"Single-character identifier '{name}' — "
+                        "consider a name that reveals intent",
+                    ))
 
         # Cryptic abbreviations (language-agnostic scan)
         for m in ABBREVIATION_RE.finditer(line):
             name = m.group(1).lower()
             if name not in seen:
                 seen.add(name)
-                findings.append({
-                    "type": "naming",
-                    "locations": [{"line_start": line_num, "line_end": line_num}],
-                    "severity": "low",
-                    "description": (
-                        f"Abbreviated identifier '{m.group(1)}' — "
-                        "consider a more descriptive name"
-                    ),
-                })
+                findings.append(_naming_finding(
+                    line_num,
+                    f"Abbreviated identifier '{m.group(1)}' — "
+                    "consider a more descriptive name",
+                ))
 
         if len(findings) >= max_issues:
             break
@@ -230,16 +269,27 @@ def _find_test_file(file_path: str, project_dir: str) -> Optional[str]:
     trees (`src/billing/invoice.py` → `tests/billing/test_invoice.py`) live.
     The walk stays inside test directories, so it can only ever find a file
     named after this one — never "some test exists, close enough".
+
+    Hyphens and underscores are treated as interchangeable in the stem: a
+    Python module name cannot contain a hyphen, so the test for a script
+    called `post-tool-use.py` is necessarily `test_post_tool_use.py`.
     """
     src = Path(file_path)
     stem = src.stem
     suffix = src.suffix
     root = Path(project_dir)
 
-    candidates = [
-        f"{stem}_test{suffix}", f"test_{stem}{suffix}",
-        f"{stem}.test{suffix}", f"{stem}.spec{suffix}", f"{stem}_spec{suffix}",
-    ]
+    stem_variants = [stem]
+    for variant in (stem.replace("-", "_"), stem.replace("_", "-")):
+        if variant not in stem_variants:
+            stem_variants.append(variant)
+
+    candidates = []
+    for name in stem_variants:
+        candidates += [
+            f"{name}_test{suffix}", f"test_{name}{suffix}",
+            f"{name}.test{suffix}", f"{name}.spec{suffix}", f"{name}_spec{suffix}",
+        ]
 
     test_roots = [root / d for d in TEST_DIRS]
     for directory in [src.parent, *test_roots]:
@@ -270,6 +320,11 @@ def detect_test_coverage_gap(
 
     language = detect_language(file_path)
     if language not in TESTABLE_LANGUAGES:
+        return []
+
+    # A package marker or a placeholder holds no behaviour to test.
+    content = read_content(file_path)
+    if content is None or not significant_lines(content, language):
         return []
 
     if _find_test_file(file_path, project_dir):
@@ -328,6 +383,26 @@ def _count_brace_func_lines(
     return len(raw_lines) - start_idx
 
 
+def _size_finding(
+    name: str, start: int, end: int, size: int, max_lines: int, measured: str
+) -> Dict:
+    """A `function_size` finding, however the size was arrived at.
+
+    `measured` names what `size` counts, because that differs by language: the
+    Python path has an AST and counts lines of code, while the others can only
+    bound a declaration and count the lines it spans.
+    """
+    return {
+        "type": "function_size",
+        "locations": [{"line_start": start, "line_end": end}],
+        "severity": "medium" if size > max_lines * 2 else "low",
+        "description": (
+            f"Function '{name}' spans {size} {measured} "
+            f"(threshold: {max_lines}) — consider decomposing"
+        ),
+    }
+
+
 def _detect_elm_declaration_size(
     raw_lines: List[str], max_lines: int
 ) -> List[Dict]:
@@ -362,15 +437,9 @@ def _detect_elm_declaration_size(
             end_idx -= 1
         size = end_idx - start_idx
         if size > max_lines:
-            findings.append({
-                "type": "function_size",
-                "locations": [{"line_start": start_idx + 1, "line_end": end_idx}],
-                "severity": "medium" if size > max_lines * 2 else "low",
-                "description": (
-                    f"Function '{name}' spans {size} lines "
-                    f"(threshold: {max_lines}) — consider decomposing"
-                ),
-            })
+            findings.append(
+                _size_finding(name, start_idx + 1, end_idx, size, max_lines, "lines")
+            )
     return findings
 
 
@@ -390,21 +459,22 @@ def detect_function_size(file_path: str, config: Dict) -> List[Dict]:
             tree = ast.parse(content)
         except SyntaxError:
             return []
+        # A function is long when there is a lot of code to hold in your head.
+        # `end_lineno - lineno` counts the docstring, the blank lines and the
+        # comments too, so it flags anything spaced out and explained — exactly
+        # backwards.
+        numbered = [line_number for line_number, _ in code_lines(content, "python")]
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 start = node.lineno
                 end = getattr(node, "end_lineno", start)
-                size = end - start + 1
+                size = bisect_right(numbered, end) - bisect_left(numbered, start)
                 if size > max_lines:
-                    findings.append({
-                        "type": "function_size",
-                        "locations": [{"line_start": start, "line_end": end}],
-                        "severity": "medium" if size > max_lines * 2 else "low",
-                        "description": (
-                            f"Function '{node.name}' spans {size} lines "
-                            f"(threshold: {max_lines}) — consider decomposing"
-                        ),
-                    })
+                    findings.append(
+                        _size_finding(
+                            node.name, start, end, size, max_lines, "lines of code"
+                        )
+                    )
         return findings
 
     # Elm: no braces to count, so size is bounded by the offside rule instead.
@@ -433,15 +503,9 @@ def detect_function_size(file_path: str, config: Dict) -> List[Dict]:
             size = _count_brace_func_lines(raw_lines, j)
             func_end = j + size  # 1-based
             if size > max_lines:
-                findings.append({
-                    "type": "function_size",
-                    "locations": [{"line_start": func_start, "line_end": func_end}],
-                    "severity": "medium" if size > max_lines * 2 else "low",
-                    "description": (
-                        f"Function '{name}' spans {size} lines "
-                        f"(threshold: {max_lines}) — consider decomposing"
-                    ),
-                })
+                findings.append(
+                    _size_finding(name, func_start, func_end, size, max_lines, "lines")
+                )
             i = j + size
         else:
             i += 1

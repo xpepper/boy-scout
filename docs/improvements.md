@@ -1,16 +1,16 @@
 # Boy Scout — Improvement Opportunities
 
-Last reviewed 2026-08-16, on branch `feat/install-and-dogfood`.
+Last reviewed 2026-08-16, on branch `fix/detector-precision`.
 
 The plugin's goal is **opportunistic refactoring**: the thing TDD skills skip,
 because they optimise the red-green-refactor loop of the *current* task and keep
 no memory of what they noticed along the way.
 
 The capture half is solid, the act-on-it half now exists (focused agents, one per
-item), and entries no longer quietly stop describing their code. What is left
-falls in three groups: the static detectors are too noisy to recommend turning
-on, findings still surface after the cheap moment to act has passed, and they
-are ranked by an asserted severity rather than anything measured.
+item), entries no longer quietly stop describing their code, and the static
+detectors are no longer reporting mostly noise. What is left falls in two
+groups: findings still surface after the cheap moment to act has passed, and
+they are ranked by an asserted severity rather than anything measured.
 
 ---
 
@@ -34,77 +34,46 @@ are ranked by an asserted severity rather than anything measured.
 | README carried the mechanics | README is the pitch; mechanics in `docs/how-it-works.md` |
 | Entries silently stopped describing their code | Anchored at record time; `boy-scout-list` flags drift, `boy-scout-verify --apply` repairs it |
 | Install meant symlinking into `~/.claude/plugins` by hand | The repo is its own marketplace: `/plugin marketplace add xpepper/boy-scout` |
+| Detectors read prose, layout and builtins as code | Scanning runs on code lines; 57 findings on this repo's own source became 29 |
 
 ---
 
 ## From running the plugin on its own source
 
-Installed into this repository and pointed at `hooks/`, `scripts/` and
-`skills/` with every static detector enabled: **57 findings across ~1,500 lines**,
-the large majority of them false. That ratio is the finding. The causes below
-are what a user turning `patterns` on for the first time would actually meet,
-and they are why the detectors are still opt-in.
+Installed into this repository and pointed at `hooks/`, `scripts/` and `skills/`
+with every static detector enabled. The first run gave **57 findings across
+~1,500 lines**, the large majority of them false; that ratio was the finding.
+Six causes turned out to account for almost all of it, and all six are now
+fixed — see the table below and the `fix/detector-precision` commits.
+
+| | Was | Now |
+|---|-----|-----|
+| D1 | `str2?` in `ABBREVIATION_RE` made every `Dict[str, str]` a naming finding, in all eleven source files | `str` is gone from the list |
+| D1b | The scan ran on raw line text, so `tmp` in a log message or a trailing comment counted | `code_lines` yields the code part of the lines that carry code, docstrings and template literals included |
+| D2 | The overlap check never compared the two halves of a pair to each other, so a table literal matched itself shifted one line down | A pair must be disjoint, and extension stops before the halves meet |
+| D3 | `normalize_line` masks strings, so two runs of prose or two table entries were indistinguishable | Windows of nothing but masked literals are not indexed; a string prefix counts as part of the literal |
+| D4 | `test_post-tool-use.py` was looked for and never found, because Python module names cannot carry hyphens | Hyphens and underscores are interchangeable in the stem; empty files are exempt |
+| D5 | `end_lineno - lineno` counted the docstring, blank lines and comments, and fired on 20 of ~60 functions | Python size is the count of code lines in the range; the finding says which unit it measured |
 
 Verified separately, and working: `bin/` really is on `PATH` in a live session,
 `boy-scout-record` runs by bare name from the skill, the entry lands anchored,
 and the Stop hook fires and writes its timestamp.
 
-### D1. `str` is flagged as a cryptic abbreviation, in every Python file
+### What the same scan reports now
 
-`ABBREVIATION_RE` contains `str2?`, so every `Dict[str, str]` annotation is a
-naming finding. It fired in **all eleven** source files. A builtin type is not a
-badly named variable.
+**29 findings**, and the shape of them is different:
 
-The same list contains `res`, `num`, `idx`, `cnt` — plausible as variable names,
-but the regex matches them anywhere on the line, including inside string
-literals and comments (already recorded as 7.1). Both want the scan to run on
-identifiers rather than on raw line text.
-
-### D2. Duplication reports a block as duplicating itself
-
-```
-pattern_analyzer.py: Duplicated block (16 lines): lines 10–25 and 11–26
-stop-hook.py:        Duplicated block (11 lines): lines 24–34 and 25–35
-record.py:           Duplicated block (12 lines): lines 44–55 and 45–56
-```
-
-Every one of those is a single dict or set literal — `LANGUAGE_MAP`,
-`TYPE_LABEL`, `VALID_TYPES` — matching itself shifted by one line. After
-normalisation each entry line becomes the same shape (`".S": "S",`), so the
-sliding window matches its own neighbour.
-
-`detect_duplication` checks that a *new* pair does not overlap pairs already
-reported, but never checks that the two halves of a pair do not overlap **each
-other**. Requiring `second_start > first_end` would remove five of the six
-duplication findings here. This is a bug, not a tuning problem.
-
-### D3. Normalised literals make any two runs of strings look identical
-
-`boy_scout_session.py: Duplicated block (9 lines): lines 44–52 and 53–61` — two
-disjoint halves of one prompt string. `normalize_line` masks every string
-literal to `"S"`, so consecutive lines of prose are indistinguishable. Masking
-is what lets near-copies match; it also means data and text match each other.
-Skipping windows whose normalised lines are all literal-only would keep the
-recall that masking buys without the false positives.
-
-### D4. Test discovery does not bridge `-` and `_`
-
-`hooks/post-tool-use.py` is reported as untested. Its tests are in
-`tests/test_post_tool_use.py` — Python module names cannot contain hyphens, so
-the test file underscores what the script hyphenates. `_find_test_file` looks
-for `test_post-tool-use.py` and finds nothing.
-
-Also flagged: `hooks/lib/__init__.py`, an empty package marker with nothing to
-test.
-
-### D5. Docstrings count toward function size
-
-`function_size` fired on 20 of roughly 60 functions at the default threshold.
-The Python path measures `end_lineno - lineno`, which includes the docstring, so
-a 9-line function carrying a 12-line docstring reads as 22 lines and gets
-flagged for decomposition. Punishing documentation is the wrong incentive, and
-it is what makes the default threshold look badly chosen. Subtract the docstring
-node before comparing.
+- **duplication: 1**, down from 8, and it is real — the two branches of
+  `detect_naming_clarity` still rhyme after the finding builder was extracted.
+  Real but not worth acting on is exactly what `wontfix` is for.
+- **test_coverage: 0**, down from 4. The one true positive it found —
+  `pattern_analyzer.py` had no test file of its own — was closed by writing
+  `tests/test_pattern_analyzer.py`, which immediately surfaced a bug of its own.
+- **naming: 11**, down from 23. What is left is `p = Path(...)` bindings and a
+  handful of bare `d`, `h`, `m`, `idx` — weak names, fairly flagged.
+- **function_size: 17**, down from 22, and now measuring code rather than
+  layout. These are functions of 21–75 code lines against a threshold of 20.
+  Whether 20 is the right default for Python is a tuning question, not a bug.
 
 ### D6. `record-opportunity` costs ~330 tokens of every session
 
@@ -183,11 +152,18 @@ than keeping them in sync by hand.
 
 ### 7. Smaller things
 
-- **Abbreviation scan is line-wide.** `ABBREVIATION_RE` matches inside string
-  literals and trailing comments, so `"tmp"` in a message is a naming finding.
 - **Duplication matching is case-insensitive.** `normalize_line` lowercases, so
   two blocks differing only in case read as copies.
 - **The hook matches `Write|Edit` only.** Other edit-shaped tools go unseen.
+- **Duplication still reads inside multi-line strings.** `significant_lines`
+  predates `code_lines` and does not track them, so two runs of prose inside one
+  triple-quoted block can still match. The literal-only rule catches the
+  adjacent-string shape; this one it does not. Reusing `code_lines` would fix
+  it, at the cost of never seeing duplicated SQL in two heredocs.
+- **`function_size` measures two different things.** Python counts lines of
+  code; the other languages count the lines a declaration spans, because there
+  is no AST to lean on. The finding says which, but one `max_func_lines`
+  threshold is being compared against both.
 - **Shared or personal?** `.gitignore` excludes the backlog, making it private
   by default — but the concept works better as a *team* refactoring backlog, and
   JSONL-append conflicts resolve trivially (union merge via `.gitattributes`).
@@ -197,10 +173,6 @@ than keeping them in sync by hand.
 
 ## Suggested sequencing
 
-0. **The detector precision bugs (D1, D2, D4, D5)** — all four are small and
-   mechanical, and together they are most of the noise a first-time user meets
-   when they enable `patterns`. Until they are fixed, the honest advice about
-   static detection is "leave it off", which makes half the plugin decorative.
 1. **Just-in-time surfacing (1)** — largest behaviour change for the least new
    machinery, and the data layer is already built.
 2. **Renames (2)** — small, and it stops `--apply` closing entries it should

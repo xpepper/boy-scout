@@ -1,4 +1,8 @@
-from detectors import detect_duplication, detect_test_coverage_gap
+from detectors import (
+    detect_duplication,
+    detect_naming_clarity,
+    detect_test_coverage_gap,
+)
 
 _DUPLICATED = '''\
 def load_alpha(path):
@@ -71,6 +75,233 @@ def test_duplication_verifies_block_content_before_reporting(tmp_path, monkeypat
     assert detect_duplication(str(source), {}) == []
 
 
+_SELF_SIMILAR_RUN = '''\
+def flatten(row):
+    parts = []
+    parts.append(row[0])
+    parts.append(row[1])
+    parts.append(row[2])
+    parts.append(row[3])
+    parts.append(row[4])
+    parts.append(row[5])
+    parts.append(row[6])
+    parts.append(row[7])
+    return parts
+
+
+def summarise(rows):
+    flattened = [flatten(row) for row in rows]
+    widest = max(len(item) for item in flattened)
+    return widest
+'''
+
+
+def test_duplication_never_reports_a_block_as_duplicating_itself(tmp_path):
+    """Consecutive lines of the same shape make a sliding window match its own
+    neighbour one line down, and the overlap check only ever compared a new
+    pair against pairs already reported. Reporting "lines 3-10 and 4-11" is a
+    self-overlap, not a copy-paste.
+    """
+    source = tmp_path / "flatten.py"
+    source.write_text(_SELF_SIMILAR_RUN)
+
+    findings = detect_duplication(str(source), {})
+
+    assert findings == []
+
+
+_TABLE_LITERAL = '''\
+LANGUAGE_MAP = {
+    ".rs": "rust",
+    ".elm": "elm",
+    ".js": "javascript",
+    ".jsx": "javascript",
+    ".ts": "typescript",
+    ".tsx": "typescript",
+    ".py": "python",
+    ".go": "go",
+    ".rb": "ruby",
+    ".java": "java",
+    ".c": "c",
+    ".cpp": "cpp",
+    ".cs": "csharp",
+    ".swift": "swift",
+    ".kt": "kotlin",
+}
+
+
+def detect_language(file_path):
+    extension = Path(file_path).suffix.lower()
+    return LANGUAGE_MAP.get(extension, "unknown")
+'''
+
+_PROSE_BLOCK = '''\
+def build_prompt(item):
+    return (
+        "You are addressing one recorded opportunity."
+        "Read the entry before you touch anything."
+        "Run the tests first and confirm they pass."
+        "Make the smallest change that resolves it."
+        "Run the tests again."
+        "Commit it on its own."
+        "Do not fold it into another change."
+        "Back out rather than pushing through."
+        "Report what you did and what you verified."
+        "Close the entry with an outcome."
+        "Stop there."
+        "Say so if it stopped being small."
+    )
+'''
+
+
+def test_duplication_ignores_a_table_of_unrelated_literals(tmp_path):
+    """Normalisation masks every string to the same token, so two halves of one
+    lookup table are indistinguishable from a copy-paste. Masking is what buys
+    the recall; a window carrying nothing but masked literals is where it costs
+    more than it buys.
+    """
+    source = tmp_path / "languages.py"
+    source.write_text(_TABLE_LITERAL)
+
+    assert detect_duplication(str(source), {}) == []
+
+
+_INTERPOLATED_PROSE = '''\
+def build_prompt(count, limit):
+    return (
+        f"You are running a scheduled session. There are {count} open entries."
+        "Read them before you touch anything."
+        f"Pick up to {limit} of them, preferring contained ones."
+        "Run the tests first and confirm they pass."
+        f"Address at most {limit} in one sitting."
+        "Commit each one on its own."
+        f"Stop after {count} attempts, whatever the outcome."
+        "Back out rather than pushing through."
+        f"Report what you did across all {count} of them."
+        "Close each entry with an outcome."
+        f"Leave the other {limit} alone."
+        "Say so if it stopped being small."
+    )
+'''
+
+
+def test_duplication_ignores_prose_carrying_interpolations(tmp_path):
+    """An `f` prefix survives normalisation, so a window of f-strings was not
+    recognised as literal-only. Prompt strings are the shape where this bites:
+    they are exactly the long runs of prose that mask into each other.
+    """
+    source = tmp_path / "prompt.py"
+    source.write_text(_INTERPOLATED_PROSE)
+
+    assert detect_duplication(str(source), {}) == []
+
+
+def test_duplication_ignores_consecutive_lines_of_prose(tmp_path):
+    """Same cause, the shape a user meets most: any two runs of a long prompt
+    string normalise identically and were reported as duplicated.
+    """
+    source = tmp_path / "prompt.py"
+    source.write_text(_PROSE_BLOCK)
+
+    assert detect_duplication(str(source), {}) == []
+
+
+def test_duplication_still_finds_a_real_copy_past_a_self_similar_run(tmp_path):
+    """Rejecting self-overlap must not throw away the genuine match that lies
+    further down the same hash bucket.
+    """
+    source = tmp_path / "loader.py"
+    source.write_text(_DUPLICATED)
+
+    findings = detect_duplication(str(source), {})
+
+    assert len(findings) == 1
+    first, second = findings[0]["locations"]
+    assert first["line_end"] < second["line_start"]
+
+
+def test_naming_does_not_flag_the_builtin_type_str(tmp_path):
+    """`str2?` in the abbreviation list made every `Dict[str, str]` annotation a
+    naming finding. It fired in all eleven source files of this repository. A
+    builtin type is not a badly named variable.
+    """
+    source = tmp_path / "render.py"
+    source.write_text(
+        "from typing import Dict\n\n\n"
+        "def render(rows: Dict[str, str]) -> Dict[str, str]:\n"
+        "    return {key: value for key, value in rows.items()}\n"
+    )
+
+    assert detect_naming_clarity(str(source), {}) == []
+
+
+def test_naming_looks_at_code_rather_than_at_strings_and_comments(tmp_path):
+    """The scan ran over raw line text, so an abbreviation inside a message or
+    a trailing comment read as an identifier that needed renaming.
+    """
+    source = tmp_path / "announce.py"
+    source.write_text(
+        "def announce(message):\n"
+        '    print("writing to tmp before the swap")  # the buf is flushed here\n'
+        "    return message\n"
+    )
+
+    assert detect_naming_clarity(str(source), {}) == []
+
+
+def test_naming_does_not_read_docstrings_as_code(tmp_path):
+    """A docstring is a multi-line string literal, so emptying `"..."` on a
+    single line never reaches it. Running the plugin on its own source flagged
+    the word `tmp` in a docstring that was explaining this very problem.
+    """
+    source = tmp_path / "stage.py"
+    source.write_text(
+        "def stage(path):\n"
+        '    """Write to a tmp file, then swap it into place.\n'
+        "\n"
+        "    The buf is flushed before the rename.\n"
+        '    """\n'
+        "    staged = write_staging_copy(path)\n"
+        "    return swap(staged)\n"
+    )
+
+    assert detect_naming_clarity(str(source), {}) == []
+
+
+def test_naming_is_not_desynchronised_by_quotes_inside_a_string(tmp_path):
+    """A quote character quoted inside another string is not an unterminated
+    docstring. Treating it as one swallows the rest of the file, and then the
+    next real docstring reads as the *end* of a string rather than the start of
+    one — so every docstring after it is scanned as code.
+    """
+    source = tmp_path / "delimiters.py"
+    source.write_text(
+        'DELIMITERS = (\'"""\', "\\\'\\\'\\\'", "`")\n'
+        "\n"
+        "\n"
+        "def stage(path):\n"
+        '    """Write to a tmp file, then swap it into place."""\n'
+        "    staged = write_staging_copy(path)\n"
+        "    return swap(staged)\n"
+    )
+
+    assert detect_naming_clarity(str(source), {}) == []
+
+
+def test_naming_still_flags_a_genuinely_abbreviated_binding(tmp_path):
+    source = tmp_path / "loader.py"
+    source.write_text(
+        "def load(path):\n"
+        "    tmp = read_bytes(path)\n"
+        "    return tmp\n"
+    )
+
+    findings = detect_naming_clarity(str(source), {})
+
+    assert len(findings) == 1
+    assert "tmp" in findings[0]["description"]
+
+
 def test_test_coverage_gap_is_recorded_as_a_file_level_finding(tmp_path):
     """A missing test file is a property of the whole file, so the finding
     must carry no line anchor rather than a fabricated lines 1-1 range.
@@ -128,12 +359,108 @@ def test_a_test_in_a_nested_test_tree_counts_as_coverage(tmp_path):
     assert detect_test_coverage_gap(str(source), {}, str(tmp_path)) == []
 
 
+def test_a_hyphenated_script_finds_its_underscored_test(tmp_path):
+    """Python module names cannot contain hyphens, so the test for
+    `hooks/post-tool-use.py` has to be `tests/test_post_tool_use.py`. Looking
+    only for `test_post-tool-use.py` reported the hook as untested — which it
+    is not, and never was.
+    """
+    source = _source(tmp_path, "hooks/post-tool-use.py")
+    _source(tmp_path, "tests/test_post_tool_use.py", "def test_hook():\n    pass\n")
+
+    assert detect_test_coverage_gap(str(source), {}, str(tmp_path)) == []
+
+
+def test_an_empty_package_marker_is_not_reported_as_untested(tmp_path):
+    """`hooks/lib/__init__.py` has nothing in it to test."""
+    source = _source(tmp_path, "hooks/lib/__init__.py", "")
+
+    assert detect_test_coverage_gap(str(source), {}, str(tmp_path)) == []
+
+
 def test_a_missing_test_is_still_reported_when_the_tree_exists(tmp_path):
     """The nested search must not turn into "any test file anywhere will do"."""
     source = _source(tmp_path, "src/billing/invoice.py")
     _source(tmp_path, "tests/billing/test_shipping.py", "def test_ship():\n    pass\n")
 
     assert len(detect_test_coverage_gap(str(source), {}, str(tmp_path))) == 1
+
+
+_DOCUMENTED_PYTHON = '''\
+def resolve(entry, outcome, note):
+    """Close a recorded opportunity.
+
+    The backlog answers one question — how much of what was recorded ever got
+    improved — and it can only answer that if entries reach a terminal state
+    rather than being deleted, hand-edited, or left open forever.
+
+    Args:
+        entry: the opportunity to close. Must already be in the backlog; a
+            caller holding only a description should record it first.
+        outcome: one of `fixed`, `wontfix`, `stale`. `fixed` means the code
+            changed and the change was verified. `wontfix` means the project
+            decided against it. `stale` means it no longer applies.
+        note: what the fix was, when that is not obvious from the entry's
+            own description. Required in practice for `wontfix`.
+
+    Returns:
+        The updated entry, with `outcome` and `resolved_at` filled in.
+
+    Raises:
+        KeyError: if no entry with this id is in the backlog.
+    """
+    entry["outcome"] = outcome
+    entry["note"] = note
+    entry["resolved_at"] = now()
+    return entry
+'''
+
+
+def test_function_size_does_not_count_the_docstring(tmp_path):
+    """The Python path measured `end_lineno - lineno`, which includes the
+    docstring, so a four-line function carrying a twelve-line docstring read as
+    eighteen lines and got flagged for decomposition. Punishing documentation
+    is the wrong incentive, and it is what made the default threshold look
+    badly chosen.
+    """
+    from detectors import detect_function_size
+
+    source = tmp_path / "resolve.py"
+    source.write_text(_DOCUMENTED_PYTHON)
+
+    assert detect_function_size(str(source), {}) == []
+
+
+def test_function_size_does_not_count_blank_lines_and_comments(tmp_path):
+    """A function is long when there is a lot of code to hold in your head, not
+    when it is spaced out and explained. Counting the gaps inflates every
+    well-commented function toward the threshold.
+    """
+    from detectors import detect_function_size
+
+    phases = "".join(
+        f"\n    # phase {i}\n    step_{i}(context)\n" for i in range(9)
+    )
+    source = tmp_path / "orchestrate.py"
+    source.write_text(f"def orchestrate(context):\n{phases}\n    return context\n")
+
+    assert detect_function_size(str(source), {}) == []
+
+
+def test_function_size_still_reports_a_long_documented_function(tmp_path):
+    """Excluding the docstring must not exempt a function that is long on its
+    own account.
+    """
+    from detectors import detect_function_size
+
+    body = "".join(f"    step_{i}()\n" for i in range(25))
+    source = tmp_path / "orchestrate.py"
+    source.write_text(f'def orchestrate():\n    """Run every step."""\n{body}')
+
+    findings = detect_function_size(str(source), {})
+
+    assert len(findings) == 1
+    assert "orchestrate" in findings[0]["description"]
 
 
 _LONG_ELM = """\

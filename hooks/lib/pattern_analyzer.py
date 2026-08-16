@@ -92,6 +92,22 @@ def is_blank_or_comment(line: str, language: str) -> bool:
     return any(stripped.startswith(p) for p in prefixes)
 
 
+def code_only(line: str, language: str) -> str:
+    """The part of a line that is code: literals emptied, trailing comment cut.
+
+    Anything looking for identifiers has to work on this rather than on the raw
+    line, or the word `tmp` inside a log message reads as a variable in need of
+    a rename.
+    """
+    without_literals = re.sub(r'"[^"]*"', '""', line)
+    without_literals = re.sub(r"'[^']*'", "''", without_literals)
+    for prefix in COMMENT_PREFIXES.get(language, ("//", "#", "--")):
+        head, marker, _ = without_literals.partition(prefix)
+        if marker:
+            without_literals = head
+    return without_literals
+
+
 def normalize_line(line: str) -> str:
     """Strip and collapse whitespace; replace literals and numbers for comparison."""
     line = line.strip()
@@ -103,6 +119,96 @@ def normalize_line(line: str) -> str:
     line = re.sub(r"'[^']*'", "'S'", line)
     line = re.sub(r"\b\d+\b", "N", line)
     return line.lower()
+
+
+def _opens_multiline_string(line: str) -> Optional[Tuple[str, int]]:
+    """The multi-line delimiter this line leaves open, and where it starts.
+
+    Scans the line rather than searching it, because a delimiter can appear
+    inside an ordinary string — `DELIMITERS = ('\"\"\"', \"'''\")` opens nothing.
+    Searching finds the inner one, declares the rest of the file to be inside a
+    docstring, and then reads the next real docstring as the end of it.
+    """
+    index, length = 0, len(line)
+    while index < length:
+        char = line[index]
+        if char == "\\":
+            index += 2
+            continue
+        if char not in "\"'`":
+            index += 1
+            continue
+
+        triple = line[index : index + 3]
+        if triple in ('"""', "'''"):
+            closing = line.find(triple, index + 3)
+            if closing == -1:
+                return triple, index
+            index = closing + 3
+            continue
+
+        cursor = index + 1
+        while cursor < length and line[cursor] != char:
+            cursor += 2 if line[cursor] == "\\" else 1
+        if cursor >= length:
+            # Only a backtick keeps a single-delimiter string open past the end
+            # of the line; an unterminated quote is a syntax error, not a block.
+            return (char, index) if char == "`" else None
+        index = cursor + 1
+
+    return None
+
+
+def code_lines(content: str, language: str) -> List[Tuple[int, str]]:
+    """(1-based line number, code part) for every line that carries code.
+
+    Blanks, comments and the interior of multi-line strings are left out, so
+    anything hunting for identifiers sees identifiers. A docstring explaining
+    that `tmp` is a bad name is prose, not a variable called `tmp`.
+    """
+    result: List[Tuple[int, str]] = []
+    open_delimiter: Optional[str] = None
+
+    for line_number, raw_line in enumerate(content.splitlines(), start=1):
+        line = raw_line
+        if open_delimiter is not None:
+            closing = line.find(open_delimiter)
+            if closing == -1:
+                continue
+            line = line[closing + len(open_delimiter):]
+            open_delimiter = None
+        elif is_blank_or_comment(line, language):
+            continue
+
+        opened = _opens_multiline_string(line)
+        if opened is not None:
+            open_delimiter, start = opened
+            line = line[:start]
+
+        code = code_only(line, language)
+        # What is left of a docstring opener or closer is quote characters.
+        if code.strip(" \t\"'`"):
+            result.append((line_number, code))
+
+    return result
+
+
+# The tokens `normalize_line` leaves behind in place of literals, with any
+# string prefix attached: `f"..."` normalizes to `f"s"`, and that `f` is part
+# of the literal rather than an identifier the line mentions.
+_MASKED_TOKEN_RE = re.compile(r"(?:\b[a-z]{1,2})?(?:\"s\"|'s')|\bn\b")
+
+
+def is_literal_only(normalized: str) -> bool:
+    """Whether a normalized line carries no identifier — only masked literals.
+
+    `normalize_line` replaces every string with `"S"` and every number with
+    `N`, which is what lets near-copies survive edits. It also means unrelated
+    text matches unrelated text: two halves of one prompt string, or two
+    entries of one lookup table, normalize identically. A line with nothing
+    left but masked literals carries no evidence either way.
+    """
+    return not re.search(r"[a-z_]", _MASKED_TOKEN_RE.sub("", normalized))
 
 
 def significant_lines(content: str, language: str) -> List[Tuple[int, str]]:
