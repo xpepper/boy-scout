@@ -63,3 +63,18 @@ def test_build_session_prompt_ignores_dismissed_items(tmp_path):
     path.write_text("\n".join(json.dumps(e) for e in entries) + "\n")
 
     assert boy_scout_session.build_session_prompt(str(tmp_path)) is None
+
+
+def test_prompt_closes_items_via_resolve_script_not_by_hand_editing(tmp_path):
+    """The backlog has two writers under a lock (the appending hook and
+    resolve_todo's in-place rewrite), so a scheduled session must never edit
+    the JSONL directly.
+    """
+    boy_scout_session = _load_module()
+    _add_todo(str(tmp_path), description="something worth fixing")
+
+    prompt = boy_scout_session.build_session_prompt(str(tmp_path))
+
+    assert "resolve.py" in prompt
+    assert "--outcome fixed" in prompt
+    assert 'Set that entry\'s "dismissed" field to true' not in prompt
