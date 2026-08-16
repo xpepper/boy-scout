@@ -191,6 +191,16 @@ BINDING_PATTERNS: Dict[str, re.Pattern] = {
 }
 
 
+def _naming_finding(line_num: int, description: str) -> Dict:
+    """A `naming` finding: always one line, always low severity."""
+    return {
+        "type": "naming",
+        "locations": [{"line_start": line_num, "line_end": line_num}],
+        "severity": "low",
+        "description": description,
+    }
+
+
 def detect_naming_clarity(file_path: str, config: Dict) -> List[Dict]:
     """Flag single-character identifiers and cryptic abbreviations."""
     content = read_content(file_path)
@@ -213,30 +223,22 @@ def detect_naming_clarity(file_path: str, config: Dict) -> List[Dict]:
                 name = m.group(1)
                 if len(name) == 1 and name.lower() not in ALLOWED_SHORT and name not in seen:
                     seen.add(name)
-                    findings.append({
-                        "type": "naming",
-                        "locations": [{"line_start": line_num, "line_end": line_num}],
-                        "severity": "low",
-                        "description": (
-                            f"Single-character identifier '{name}' — "
-                            "consider a name that reveals intent"
-                        ),
-                    })
+                    findings.append(_naming_finding(
+                        line_num,
+                        f"Single-character identifier '{name}' — "
+                        "consider a name that reveals intent",
+                    ))
 
         # Cryptic abbreviations (language-agnostic scan)
         for m in ABBREVIATION_RE.finditer(line):
             name = m.group(1).lower()
             if name not in seen:
                 seen.add(name)
-                findings.append({
-                    "type": "naming",
-                    "locations": [{"line_start": line_num, "line_end": line_num}],
-                    "severity": "low",
-                    "description": (
-                        f"Abbreviated identifier '{m.group(1)}' — "
-                        "consider a more descriptive name"
-                    ),
-                })
+                findings.append(_naming_finding(
+                    line_num,
+                    f"Abbreviated identifier '{m.group(1)}' — "
+                    "consider a more descriptive name",
+                ))
 
         if len(findings) >= max_issues:
             break
@@ -381,6 +383,26 @@ def _count_brace_func_lines(
     return len(raw_lines) - start_idx
 
 
+def _size_finding(
+    name: str, start: int, end: int, size: int, max_lines: int, measured: str
+) -> Dict:
+    """A `function_size` finding, however the size was arrived at.
+
+    `measured` names what `size` counts, because that differs by language: the
+    Python path has an AST and counts lines of code, while the others can only
+    bound a declaration and count the lines it spans.
+    """
+    return {
+        "type": "function_size",
+        "locations": [{"line_start": start, "line_end": end}],
+        "severity": "medium" if size > max_lines * 2 else "low",
+        "description": (
+            f"Function '{name}' spans {size} {measured} "
+            f"(threshold: {max_lines}) — consider decomposing"
+        ),
+    }
+
+
 def _detect_elm_declaration_size(
     raw_lines: List[str], max_lines: int
 ) -> List[Dict]:
@@ -415,15 +437,9 @@ def _detect_elm_declaration_size(
             end_idx -= 1
         size = end_idx - start_idx
         if size > max_lines:
-            findings.append({
-                "type": "function_size",
-                "locations": [{"line_start": start_idx + 1, "line_end": end_idx}],
-                "severity": "medium" if size > max_lines * 2 else "low",
-                "description": (
-                    f"Function '{name}' spans {size} lines "
-                    f"(threshold: {max_lines}) — consider decomposing"
-                ),
-            })
+            findings.append(
+                _size_finding(name, start_idx + 1, end_idx, size, max_lines, "lines")
+            )
     return findings
 
 
@@ -454,15 +470,11 @@ def detect_function_size(file_path: str, config: Dict) -> List[Dict]:
                 end = getattr(node, "end_lineno", start)
                 size = bisect_right(numbered, end) - bisect_left(numbered, start)
                 if size > max_lines:
-                    findings.append({
-                        "type": "function_size",
-                        "locations": [{"line_start": start, "line_end": end}],
-                        "severity": "medium" if size > max_lines * 2 else "low",
-                        "description": (
-                            f"Function '{node.name}' spans {size} lines of code "
-                            f"(threshold: {max_lines}) — consider decomposing"
-                        ),
-                    })
+                    findings.append(
+                        _size_finding(
+                            node.name, start, end, size, max_lines, "lines of code"
+                        )
+                    )
         return findings
 
     # Elm: no braces to count, so size is bounded by the offside rule instead.
@@ -491,15 +503,9 @@ def detect_function_size(file_path: str, config: Dict) -> List[Dict]:
             size = _count_brace_func_lines(raw_lines, j)
             func_end = j + size  # 1-based
             if size > max_lines:
-                findings.append({
-                    "type": "function_size",
-                    "locations": [{"line_start": func_start, "line_end": func_end}],
-                    "severity": "medium" if size > max_lines * 2 else "low",
-                    "description": (
-                        f"Function '{name}' spans {size} lines "
-                        f"(threshold: {max_lines}) — consider decomposing"
-                    ),
-                })
+                findings.append(
+                    _size_finding(name, func_start, func_end, size, max_lines, "lines")
+                )
             i = j + size
         else:
             i += 1
