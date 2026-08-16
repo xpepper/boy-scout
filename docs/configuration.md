@@ -84,7 +84,8 @@ An unrecognised level falls back to `balanced`.
 | `function_size` | Functions longer than the sensitivity threshold | Python (via the `ast` module), Rust, JS/TS, Go (regex plus brace counting) |
 
 When several are enabled, they run in priority order: duplication, naming,
-test coverage, function size.
+test coverage, function size. Language support is prioritised in the order
+Rust, Elm, JavaScript/TypeScript, Python; anything else is best-effort.
 
 The hook only looks at files it recognises as source or documentation, skips
 anything over 500 KB, and skips anything that looks binary.
