@@ -21,13 +21,18 @@ from todo_manager import list_todos, get_last_surfaced, set_last_surfaced, load_
 SEVERITY_BADGE = {"high": "🔴", "medium": "🟡", "low": "🟢"}
 
 TYPE_LABEL = {
-    "duplication":       "Duplication",
-    "naming":            "Naming",
-    "test_coverage":     "No tests",
-    "function_size":     "Long function",
-    "dead_code":         "Dead code",
-    "wrong_abstraction": "Wrong abstraction",
-    "custom":            "Opportunity",
+    "skipped_refactor":    "Skipped refactor",
+    "comprehension_cost":  "Comprehension cost",
+    "self_inflicted_debt": "Self-inflicted debt",
+    "test_smell":          "Test smell",
+    "repeated_friction":   "Repeated friction",
+    "duplication":         "Duplication",
+    "naming":              "Naming",
+    "test_coverage":       "No tests",
+    "function_size":       "Long function",
+    "dead_code":           "Dead code",
+    "wrong_abstraction":   "Wrong abstraction",
+    "custom":              "Opportunity",
 }
 
 MAX_ITEMS_IN_SUMMARY = 12

@@ -174,6 +174,74 @@ def add_todo(project_dir: str, todo: Dict) -> Tuple[str, bool]:
     return todo_id, True
 
 
+VALID_OUTCOMES = ("fixed", "wontfix", "stale")
+
+
+def resolve_todo(
+    project_dir: str,
+    todo_id: str,
+    outcome: str,
+    note: Optional[str] = None,
+) -> bool:
+    """Close a TODO entry, recording *how* it ended.
+
+    `dismissed` alone cannot tell a fix from a shrug, so the plugin cannot say
+    what fraction of what it recorded actually got improved. `outcome` is that
+    missing half:
+
+      fixed    the code was changed and verified
+      wontfix  a real observation the project has decided not to act on
+      stale    no longer applies (the code moved on, or the finding was wrong)
+
+    `dismissed` is set too, so every existing reader keeps treating a resolved
+    item as closed without knowing about outcomes.
+
+    Returns True if the entry was found and updated, False if no entry has that
+    id. Raises ValueError for an unknown outcome.
+    """
+    if outcome not in VALID_OUTCOMES:
+        raise ValueError(
+            f"unknown outcome {outcome!r}; expected one of {', '.join(VALID_OUTCOMES)}"
+        )
+
+    path = _todos_path(project_dir)
+    if not path.exists():
+        return False
+
+    # Read-modify-write under the same exclusive lock add_todo appends with, so
+    # a concurrent hook can't lose an entry. The file is rewritten in place
+    # (never replaced) to keep the lock meaningful.
+    with open(path, "r+") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        try:
+            # Lines that don't parse are carried over untouched: rewriting the
+            # store is no excuse for dropping data we merely failed to read.
+            lines = [line for line in f.read().splitlines() if line.strip()]
+            found = False
+            for i, line in enumerate(lines):
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if entry.get("id") != todo_id:
+                    continue
+                entry["dismissed"] = True
+                entry["outcome"] = outcome
+                entry["resolved_at"] = time.time()
+                if note:
+                    entry["resolution_note"] = note
+                lines[i] = json.dumps(entry)
+                found = True
+
+            if found:
+                f.seek(0)
+                f.write("".join(line + "\n" for line in lines))
+                f.truncate()
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
+    return found
+
+
 def list_todos(
     project_dir: str,
     since: Optional[float] = None,

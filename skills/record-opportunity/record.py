@@ -2,9 +2,8 @@
 """
 Boy Scout record-opportunity skill handler.
 
-Records a refactoring opportunity to .claude/boy-scout-todos.jsonl without
-interrupting the current task. Invoked by Claude when it notices an
-opportunity that should be addressed later.
+Records a refactoring opportunity to .claude/boy-scout-todos.jsonl. Invoked by
+Claude when it notices an opportunity while doing other work.
 
 Usage:
     python3 record.py \\
@@ -14,6 +13,10 @@ Usage:
         --description "Logic duplicated in process_request()" \\
         --severity medium \\
         [--context "Could be extracted to a shared parse_input() helper"]
+
+Add --outcome fixed when the fix was already made on the spot: the item is
+recorded and closed in one step, so on-the-spot cleanups still show up in the
+recorded-vs-resolved ratio instead of vanishing.
 """
 import argparse
 import json
@@ -29,9 +32,17 @@ _plugin_root = os.environ.get(
 )
 sys.path.insert(0, str(Path(_plugin_root) / "hooks" / "lib"))
 
-from todo_manager import add_todo, list_todos  # noqa: E402
+from todo_manager import VALID_OUTCOMES, add_todo, list_todos, resolve_todo  # noqa: E402
 
 VALID_TYPES = {
+    # Signals only an agent that did the work can produce. These are the
+    # plugin's reason to exist: no linter can see them.
+    "skipped_refactor",
+    "comprehension_cost",
+    "self_inflicted_debt",
+    "test_smell",
+    "repeated_friction",
+    # The standard smell taxonomy, for what static analysis also catches.
     "duplication",
     "function_size",
     "naming",
@@ -51,6 +62,9 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--severity",    default="medium", choices=sorted(VALID_SEVERITIES))
     p.add_argument("--lines",       default="",  help="Optional line range, e.g. '42' or '42-58'")
     p.add_argument("--context",     default="",  help="Optional hint for addressing the issue")
+    p.add_argument("--outcome",     default=None, choices=sorted(VALID_OUTCOMES),
+                   help="Close the item immediately — use 'fixed' when you already made the fix")
+    p.add_argument("--note",        default="",  help="Optional explanation of the outcome")
     return p.parse_args()
 
 
@@ -89,9 +103,22 @@ def main() -> None:
         todo["context"] = args.context
 
     todo_id, is_new = add_todo(project_dir, todo)
+
+    # A fix made on the spot is recorded and closed in one step. Going through
+    # add_todo first means an on-the-spot fix also closes the open entry the
+    # backlog may already hold for that issue, rather than leaving a resolved
+    # twin beside it.
+    if args.outcome:
+        resolve_todo(project_dir, todo_id, args.outcome, note=args.note or None)
+
     total = len(list_todos(project_dir))
 
-    if is_new:
+    if args.outcome:
+        message = (
+            f"Recorded and closed as {args.outcome}: [{args.type}] {args.file} — "
+            f"{args.description} (id: {todo_id})"
+        )
+    elif is_new:
         message = (
             f"Recorded opportunity #{total}: [{args.type}] {args.file} — "
             f"{args.description} (id: {todo_id})"
@@ -105,6 +132,7 @@ def main() -> None:
     result = {
         "id":       todo_id,
         "is_new":   is_new,
+        "outcome":  args.outcome,
         "position": total,
         "message":  message,
     }
