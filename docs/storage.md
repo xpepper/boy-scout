@@ -73,8 +73,15 @@ Keeping the two apart matters: file-level findings once shared a placeholder
 range of `1-1`, which made every file-level finding in a file collide with
 every other one of the same type, and the loser was silently discarded.
 
-Once an entry is dismissed it no longer blocks anything: if the same issue
-resurfaces later, it is recorded again as a new entry.
+Closing an entry usually stops it blocking anything: if the same issue
+resurfaces after being `fixed` or going `stale`, that is news, and it is
+recorded again as a new entry.
+
+`wontfix` is the exception. It keeps suppressing matching findings for good,
+because it is a decision rather than an observation. The detection hook re-runs
+over the whole file on every edit, so without that a declined item would
+reappear on the very next keystroke and `wontfix` would mean nothing. Recording
+against a `wontfix` entry reports it as declined rather than as tracked.
 
 When the `record-opportunity` skill hits an existing entry this way, it reports
 `"is_new": false` and says the item is already tracked rather than pretending to

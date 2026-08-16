@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from todo_manager import add_todo, list_todos, load_config, resolve_todo
+from todo_manager import add_todo, get_todo, list_todos, load_config, resolve_todo
 
 
 def test_default_config_has_no_enabled_detectors_by_default(tmp_path):
@@ -288,3 +288,40 @@ def test_add_todo_redetects_after_dismissal(tmp_path):
 
     assert is_new is True
     assert new_id != todo_id
+
+
+def test_wontfix_suppresses_the_same_finding_being_recorded_again(tmp_path):
+    """`wontfix` is a decision, and a decision has to stick. The detection hook
+    re-runs over the whole file on every edit, so without this the item the
+    project just declined comes straight back — and `wontfix` means nothing.
+    """
+    todo_id, _ = add_todo(str(tmp_path), _finding())
+    resolve_todo(str(tmp_path), todo_id, "wontfix", note="we like it this way")
+
+    same_id, is_new = add_todo(str(tmp_path), _finding())
+
+    assert is_new is False
+    assert same_id == todo_id
+    assert list_todos(str(tmp_path), include_dismissed=True) != []
+    assert len(list_todos(str(tmp_path), include_dismissed=True)) == 1
+
+
+def test_wontfix_only_suppresses_the_finding_it_was_about(tmp_path):
+    todo_id, _ = add_todo(str(tmp_path), _finding())
+    resolve_todo(str(tmp_path), todo_id, "wontfix")
+
+    other = {**_finding(), "file_path": "src/elsewhere.py"}
+    _, is_new = add_todo(str(tmp_path), other)
+
+    assert is_new is True
+
+
+def test_get_todo_returns_the_entry_including_closed_ones(tmp_path):
+    todo_id, _ = add_todo(str(tmp_path), _finding())
+    resolve_todo(str(tmp_path), todo_id, "wontfix")
+
+    entry = get_todo(str(tmp_path), todo_id)
+
+    assert entry is not None
+    assert entry["outcome"] == "wontfix"
+    assert get_todo(str(tmp_path), "nosuchid") is None

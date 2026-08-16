@@ -33,6 +33,7 @@ from todo_manager import (  # noqa: E402
     VALID_OUTCOMES,
     add_todo,
     find_project_dir,
+    get_todo,
     list_todos,
     resolve_todo,
 )
@@ -125,6 +126,13 @@ def main() -> None:
         message = (
             f"Recorded opportunity #{total}: [{args.type}] {args.file} — "
             f"{args.description} (id: {todo_id})"
+        )
+    elif (get_todo(project_dir, todo_id) or {}).get("outcome") == "wontfix":
+        # Saying "already tracked" here would send Claude looking for an open
+        # item that isn't there — or off to fix something the project declined.
+        message = (
+            f"Not recorded: [{args.type}] {args.file} was already closed as "
+            f"wontfix (id: {todo_id}). Leave it alone unless the user reopens it."
         )
     else:
         message = (
