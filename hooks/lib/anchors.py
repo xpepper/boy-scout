@@ -26,7 +26,7 @@ import hashlib
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from pattern_analyzer import detect_language, read_content, significant_lines
+from source_lines import detect_language, read_content, significant_lines
 
 _HASH_CHARS = 16
 

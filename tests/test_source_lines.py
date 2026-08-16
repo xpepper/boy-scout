@@ -5,7 +5,7 @@ whether an anchor survives a reformat, and whether it stays put through a
 rename of something nearby, is decided entirely by these two functions rather
 than by anything in `anchors.py`.
 """
-from pattern_analyzer import (
+from source_lines import (
     detect_language,
     is_blank_or_comment,
     normalize_line,
