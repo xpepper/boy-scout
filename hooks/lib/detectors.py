@@ -222,22 +222,39 @@ TESTABLE_LANGUAGES = {
 
 
 def _find_test_file(file_path: str, project_dir: str) -> Optional[str]:
+    """Locate the test file for a source file, or None if there isn't one.
+
+    Looks beside the file and at the top of the usual test directories first,
+    since that answers most layouts without touching the disk much. Only if
+    that fails does it walk the test directories, which is where mirrored
+    trees (`src/billing/invoice.py` → `tests/billing/test_invoice.py`) live.
+    The walk stays inside test directories, so it can only ever find a file
+    named after this one — never "some test exists, close enough".
+    """
     src = Path(file_path)
     stem = src.stem
     suffix = src.suffix
     root = Path(project_dir)
 
-    candidates = (
-        [f"{stem}_test{suffix}", f"test_{stem}{suffix}",
-         f"{stem}.test{suffix}", f"{stem}.spec{suffix}", f"{stem}_spec{suffix}"]
-    )
+    candidates = [
+        f"{stem}_test{suffix}", f"test_{stem}{suffix}",
+        f"{stem}.test{suffix}", f"{stem}.spec{suffix}", f"{stem}_spec{suffix}",
+    ]
 
-    search_dirs = [src.parent] + [root / d for d in TEST_DIRS]
-    for directory in search_dirs:
+    test_roots = [root / d for d in TEST_DIRS]
+    for directory in [src.parent, *test_roots]:
         for name in candidates:
             candidate = directory / name
             if candidate.exists():
                 return str(candidate)
+
+    for directory in test_roots:
+        if not directory.is_dir():
+            continue
+        for name in candidates:
+            match = next(directory.rglob(name), None)
+            if match is not None:
+                return str(match)
     return None
 
 

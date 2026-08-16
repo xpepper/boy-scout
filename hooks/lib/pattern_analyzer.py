@@ -43,7 +43,16 @@ COMMENT_PREFIXES: dict[str, tuple] = {
     "csharp":     ("//",),
 }
 
-TEST_INDICATORS = ("test", "spec", "mock", "fixture", "_test", ".test", ".spec")
+# Test-ness is a property of how a file is named or where it lives, not of
+# whether some test-ish word happens to appear inside its name: "latest_prices"
+# contains "test" and "inspector" contains "spec".
+TEST_NAME_PREFIXES = ("test_", "spec_", "mock_", "fixture_")
+TEST_NAME_SUFFIXES = ("_test", "_spec", "_mock", "_fixture")
+TEST_NAME_INFIXES = (".test", ".spec")  # invoice.test.ts, invoice.spec.ts
+TEST_STEMS = ("test", "tests", "spec", "specs", "conftest", "mocks", "fixtures")
+TEST_DIR_NAMES = frozenset(
+    {"test", "tests", "spec", "specs", "__tests__", "__mocks__", "testing", "fixtures"}
+)
 
 
 def detect_language(file_path: str) -> str:
@@ -59,8 +68,20 @@ def read_content(file_path: str) -> Optional[str]:
 
 
 def is_test_file(file_path: str) -> bool:
-    stem = Path(file_path).stem.lower()
-    return any(indicator in stem for indicator in TEST_INDICATORS)
+    """Whether this file is test code rather than production code."""
+    path = Path(file_path)
+    name = path.name.lower()
+    stem = path.stem.lower()
+
+    if any(part.lower() in TEST_DIR_NAMES for part in path.parts[:-1]):
+        return True
+    # `invoice.test.ts` has stem `invoice.test`; strip trailing suffixes so the
+    # prefix/suffix rules below see the same shape whatever the extension.
+    if any(infix + "." in name for infix in TEST_NAME_INFIXES):
+        return True
+    if stem in TEST_STEMS:
+        return True
+    return stem.startswith(TEST_NAME_PREFIXES) or stem.endswith(TEST_NAME_SUFFIXES)
 
 
 def is_blank_or_comment(line: str, language: str) -> bool:
