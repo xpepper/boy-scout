@@ -186,7 +186,8 @@ def code_lines(content: str, language: str) -> List[Tuple[int, str]]:
             line = line[:start]
 
         code = code_only(line, language)
-        if code.strip():
+        # What is left of a docstring opener or closer is quote characters.
+        if code.strip(" \t\"'`"):
             result.append((line_number, code))
 
     return result
