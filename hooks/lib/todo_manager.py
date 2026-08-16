@@ -33,11 +33,7 @@ DEFAULT_CONFIG: Dict = {
         ],
         "ignore_tests": False,
     },
-    "output": {
-        "suppress_transcript": True,
-    },
     "session": {
-        "auto_clear": False,
         # When the open (non-dismissed) backlog exceeds this size, the Stop
         # hook adds a triage nudge to its summary instead of letting the
         # backlog grow silently forever.

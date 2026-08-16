@@ -23,11 +23,7 @@ Full defaults:
     ],
     "ignore_tests": false
   },
-  "output": {
-    "suppress_transcript": true
-  },
   "session": {
-    "auto_clear": false,
     "triage_threshold": 20
   }
 }
@@ -61,17 +57,10 @@ exchange for mechanical coverage. Start with a single pattern:
 
 An unrecognised level falls back to `balanced`.
 
-## `output`
-
-| Key | Default | What it does |
-|-----|---------|--------------|
-| `suppress_transcript` | `true` | Reserved. The PostToolUse hook currently suppresses its output unconditionally, so changing this has no effect today. |
-
 ## `session`
 
 | Key | Default | What it does |
 |-----|---------|--------------|
-| `auto_clear` | `false` | Reserved. Nothing reads it yet. |
 | `triage_threshold` | `20` | When the open (non-dismissed) backlog has reached this many items, the Stop hook appends a "backlog has grown" nudge to its summary. The nudge only ever rides along with an actual new-findings summary, so it cannot turn into a nag on idle stops. |
 
 ## Detectors in detail
