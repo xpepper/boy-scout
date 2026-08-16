@@ -219,6 +219,25 @@ def test_naming_looks_at_code_rather_than_at_strings_and_comments(tmp_path):
     assert detect_naming_clarity(str(source), {}) == []
 
 
+def test_naming_does_not_read_docstrings_as_code(tmp_path):
+    """A docstring is a multi-line string literal, so emptying `"..."` on a
+    single line never reaches it. Running the plugin on its own source flagged
+    the word `tmp` in a docstring that was explaining this very problem.
+    """
+    source = tmp_path / "stage.py"
+    source.write_text(
+        "def stage(path):\n"
+        '    """Write to a tmp file, then swap it into place.\n'
+        "\n"
+        "    The buf is flushed before the rename.\n"
+        '    """\n'
+        "    staged = write_staging_copy(path)\n"
+        "    return swap(staged)\n"
+    )
+
+    assert detect_naming_clarity(str(source), {}) == []
+
+
 def test_naming_still_flags_a_genuinely_abbreviated_binding(tmp_path):
     source = tmp_path / "loader.py"
     source.write_text(

@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from pattern_analyzer import (
-    code_only,
+    code_lines,
     detect_language,
     is_blank_or_comment,
     is_literal_only,
@@ -201,18 +201,12 @@ def detect_naming_clarity(file_path: str, config: Dict) -> List[Dict]:
     language = detect_language(file_path)
     max_issues = _thresholds(config)["max_naming_issues"]
     binding_re = BINDING_PATTERNS.get(language)
-    lines = content.splitlines()
     findings = []
     seen: set = set()
 
-    for i, raw_line in enumerate(lines):
-        line_num = i + 1
-        if is_blank_or_comment(raw_line, language):
-            continue
-
-        # Identifiers only live in the code part of the line: a trailing
-        # comment or a message string is prose, not something to rename.
-        line = code_only(raw_line, language)
+    # Identifiers only live in the code part of a file: a comment, a message
+    # string or a docstring is prose, not something to rename.
+    for line_num, line in code_lines(content, language):
 
         # Single-character identifiers via binding pattern
         if binding_re:

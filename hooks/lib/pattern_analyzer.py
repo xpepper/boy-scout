@@ -121,6 +121,60 @@ def normalize_line(line: str) -> str:
     return line.lower()
 
 
+# Delimiters that open a string literal running past the end of the line.
+_MULTILINE_DELIMITERS = ('"""', "'''", "`")
+
+
+def _opens_multiline_string(line: str) -> Optional[Tuple[str, int]]:
+    """The multi-line delimiter this line leaves open, and where it starts."""
+    cursor = 0
+    while True:
+        delimiter, position = None, len(line)
+        for candidate in _MULTILINE_DELIMITERS:
+            index = line.find(candidate, cursor)
+            if index != -1 and index < position:
+                delimiter, position = candidate, index
+        if delimiter is None:
+            return None
+        closing = line.find(delimiter, position + len(delimiter))
+        if closing == -1:
+            return delimiter, position
+        cursor = closing + len(delimiter)
+
+
+def code_lines(content: str, language: str) -> List[Tuple[int, str]]:
+    """(1-based line number, code part) for every line that carries code.
+
+    Blanks, comments and the interior of multi-line strings are left out, so
+    anything hunting for identifiers sees identifiers. A docstring explaining
+    that `tmp` is a bad name is prose, not a variable called `tmp`.
+    """
+    result: List[Tuple[int, str]] = []
+    open_delimiter: Optional[str] = None
+
+    for line_number, raw_line in enumerate(content.splitlines(), start=1):
+        line = raw_line
+        if open_delimiter is not None:
+            closing = line.find(open_delimiter)
+            if closing == -1:
+                continue
+            line = line[closing + len(open_delimiter):]
+            open_delimiter = None
+        elif is_blank_or_comment(line, language):
+            continue
+
+        opened = _opens_multiline_string(line)
+        if opened is not None:
+            open_delimiter, start = opened
+            line = line[:start]
+
+        code = code_only(line, language)
+        if code.strip():
+            result.append((line_number, code))
+
+    return result
+
+
 # The tokens `normalize_line` leaves behind in place of literals.
 _MASKED_TOKEN_RE = re.compile(r"\"s\"|'s'|\bn\b")
 
