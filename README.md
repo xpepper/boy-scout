@@ -19,9 +19,8 @@ agents turn them back into commits.
 
 1. **Notice.** While doing anything else, Claude records what it sees — a refactor
    step it skipped, three files it had to read to answer one question, a compromise
-   it made to keep a diff small. Static detectors can add mechanical findings too
-   (opt-in). Small, safe, uncontroversial fixes in a file it is *already editing*
-   get made on the spot instead, as their own commit.
+   it made to keep a diff small. Small, safe, uncontroversial fixes in a file it is
+   *already editing* get made on the spot instead, as their own commit.
 2. **Surface.** When Claude finishes responding, a Stop hook reports what is new.
    Nothing interrupts you mid-task.
 3. **Address.** `/boy-scout-session` dispatches one focused agent per item: each
@@ -84,15 +83,21 @@ Sessions can also run on a schedule, unattended:
 
 ## Configure
 
-Everything has a working default. The plugin auto-creates
-`.claude/boy-scout-config.json` on first run; you only need to edit it to turn a
-static detector on:
+There is almost nothing to configure, deliberately: what gets recorded is
+Claude's judgment, not a threshold. The plugin auto-creates
+`.claude/boy-scout-config.json` on first run with the one knob there is — when
+the Stop hook starts nudging you that the backlog has grown.
 
 ```json
-{ "detection": { "patterns": ["test_coverage"] } }
+{ "session": { "triage_threshold": 20 } }
 ```
 
 [Full reference →](docs/configuration.md)
+
+> **Note.** Versions before this one also shipped opt-in static detectors that
+> ran on every file write. They have been removed: they reported what a linter
+> reports, and your linter does it better. See
+> [how it works](docs/how-it-works.md#why-there-is-no-static-analysis-here).
 
 ---
 

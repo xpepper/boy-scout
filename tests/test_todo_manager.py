@@ -5,14 +5,14 @@ import pytest
 from todo_manager import add_todo, get_todo, list_todos, load_config, resolve_todo
 
 
-def test_default_config_has_no_enabled_detectors_by_default(tmp_path):
-    """Static detection is opt-in: the subsystem is on, but no pattern is
-    selected until the user explicitly enables one. record-opportunity
-    (Claude's semantic judgment) is the only active channel out of the box.
+def test_the_config_offers_only_the_triage_threshold(tmp_path):
+    """`record-opportunity` is the only channel, and it is not configurable:
+    what Claude records is a judgment, not a threshold. The one knob left
+    governs when the Stop hook starts nudging about backlog size.
     """
     config = load_config(str(tmp_path))
-    assert config["detection"]["patterns"] == []
-    assert config["detection"]["enabled"] is True
+
+    assert config == {"session": {"triage_threshold": 20}}
 
 
 def test_add_todo_persists_entry(tmp_path):

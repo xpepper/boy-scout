@@ -1,18 +1,6 @@
 {
-  "description": "Boy Scout refactoring detection and session summary hooks",
+  "description": "Boy Scout end-of-response backlog summary",
   "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Write|Edit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 $CLAUDE_PLUGIN_ROOT/hooks/post-tool-use.py",
-            "timeout": 15
-          }
-        ]
-      }
-    ],
     "Stop": [
       {
         "hooks": [

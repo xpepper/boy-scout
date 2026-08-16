@@ -4,7 +4,7 @@ Opportunities are persisted in `.claude/boy-scout-todos.jsonl`: line-delimited
 JSON, one entry per line, appended under an exclusive `fcntl` lock so parallel
 hook runs cannot interleave.
 
-**Do not edit it by hand.** Two writers share it: the PostToolUse hook appends
+**Do not edit it by hand.** Two writers share it: `boy-scout-record` appends
 while you work, and closing an item rewrites the file in place. Both take the
 same lock; a text editor takes nothing, so a hand-edit can silently drop a
 concurrent write. Close items with
@@ -16,13 +16,13 @@ An example:
 ```json
 {
   "id": "a3f9c12e",
-  "type": "duplication",
+  "type": "self_inflicted_debt",
   "file_path": "src/routes/auth.rs",
   "locations": [{"line_start": 88, "line_end": 104}],
-  "description": "Block duplicated from src/routes/users.rs:45-61",
+  "description": "Copied parse_json_body from users.rs rather than extracting it, to keep this diff to one file",
   "severity": "medium",
   "detected_at": 1713200000.0,
-  "source": "hook",
+  "source": "skill",
   "dismissed": false
 }
 ```
@@ -35,7 +35,7 @@ An example:
 | `locations` | Zero or more `{line_start, line_end}` ranges. File-level findings (a missing test file, say) carry an empty list, not a placeholder range. |
 | `severity` | `low`, `medium`, or `high` |
 | `detected_at` | Unix timestamp, used by the Stop hook to work out what is new |
-| `source` | `"hook"` for static detection, `"skill"` for Claude's own semantic observation via `record-opportunity` |
+| `source` | Always `"skill"` on new entries. `"hook"` appears on entries written by the static detectors that earlier versions shipped, and is still read. |
 | `dismissed` | `false` until the item is resolved or written off |
 | `context` | Optional. A suggested approach, recorded by the skill when Claude has one. |
 | `outcome` | Absent while the item is open. On closing: `fixed`, `wontfix`, or `stale`. |

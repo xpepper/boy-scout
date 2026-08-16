@@ -1,16 +1,16 @@
 # Boy Scout — Improvement Opportunities
 
-Last reviewed 2026-08-16, on branch `fix/detector-precision`.
+Last reviewed 2026-08-16, on branch `feat/remove-static-detectors`.
 
 The plugin's goal is **opportunistic refactoring**: the thing TDD skills skip,
 because they optimise the red-green-refactor loop of the *current* task and keep
 no memory of what they noticed along the way.
 
-The capture half is solid, the act-on-it half now exists (focused agents, one per
-item), entries no longer quietly stop describing their code, and the static
-detectors are no longer reporting mostly noise. What is left falls in two
-groups: findings still surface after the cheap moment to act has passed, and
-they are ranked by an asserted severity rather than anything measured.
+The capture half is solid, the act-on-it half exists (focused agents, one per
+item), entries no longer quietly stop describing their code, and the plugin now
+does one thing instead of one thing plus a worse linter. What is left falls in
+two groups: findings still surface after the cheap moment to act has passed,
+and they are ranked by an asserted severity rather than anything measured.
 
 ---
 
@@ -34,17 +34,20 @@ they are ranked by an asserted severity rather than anything measured.
 | README carried the mechanics | README is the pitch; mechanics in `docs/how-it-works.md` |
 | Entries silently stopped describing their code | Anchored at record time; `boy-scout-list` flags drift, `boy-scout-verify --apply` repairs it |
 | Install meant symlinking into `~/.claude/plugins` by hand | The repo is its own marketplace: `/plugin marketplace add xpepper/boy-scout` |
-| Detectors read prose, layout and builtins as code | Scanning runs on code lines; 57 findings on this repo's own source became 29 |
+| Detectors read prose, layout and builtins as code | Scanning ran on code lines; 57 findings on this repo's own source became 29 |
+| The plugin shipped its own worse linter | Static detection removed; `record-opportunity` is the only channel |
 
 ---
 
-## From running the plugin on its own source
+## The static detectors, and why they are gone
+
+Kept here because it is the most useful thing this document records: an
+experiment that was run properly and then acted on.
 
 Installed into this repository and pointed at `hooks/`, `scripts/` and `skills/`
 with every static detector enabled. The first run gave **57 findings across
 ~1,500 lines**, the large majority of them false; that ratio was the finding.
-Six causes turned out to account for almost all of it, and all six are now
-fixed — see the table below and the `fix/detector-precision` commits.
+Six causes accounted for almost all of it, and all six were fixed (#11).
 
 | | Was | Now |
 |---|-----|-----|
@@ -59,21 +62,33 @@ Verified separately, and working: `bin/` really is on `PATH` in a live session,
 `boy-scout-record` runs by bare name from the skill, the entry lands anchored,
 and the Stop hook fires and writes its timestamp.
 
-### What the same scan reports now
+### What the fixed detectors reported, and what that settled
 
-**29 findings**, and the shape of them is different:
+**29 findings**, down from 57:
 
-- **duplication: 1**, down from 8, and it is real — the two branches of
-  `detect_naming_clarity` still rhyme after the finding builder was extracted.
-  Real but not worth acting on is exactly what `wontfix` is for.
-- **test_coverage: 0**, down from 4. The one true positive it found —
-  `pattern_analyzer.py` had no test file of its own — was closed by writing
-  `tests/test_pattern_analyzer.py`, which immediately surfaced a bug of its own.
-- **naming: 11**, down from 23. What is left is `p = Path(...)` bindings and a
-  handful of bare `d`, `h`, `m`, `idx` — weak names, fairly flagged.
-- **function_size: 17**, down from 22, and now measuring code rather than
-  layout. These are functions of 21–75 code lines against a threshold of 20.
-  Whether 20 is the right default for Python is a tuning question, not a bug.
+- **duplication: 1**, from 8, and real — the two branches of
+  `detect_naming_clarity` still rhymed after the finding builder was extracted.
+- **test_coverage: 0**, from 4. Its one true positive — `pattern_analyzer.py`
+  had no test file — was closed by writing one, which surfaced a bug of its own.
+- **naming: 11**, from 23. What survived was `p = Path(...)` and a handful of
+  bare `d`, `h`, `m`, `idx`.
+- **function_size: 17**, from 22, now measuring code rather than layout:
+  functions of 21–75 code lines against a threshold of 20.
+
+That last list is the argument for removal. `p = Path(...)` and "this function
+is 21 lines" are rules you *disable* in ruff, and the detectors had no per-rule
+config, no autofix and no editor integration to make them worth the friction.
+
+The sharper point is that the plugin's own skill says to drop these on sight.
+`SKILL.md` lists under `never`: "a restatement of what the project's linter or
+type checker already reports". The hook produced nothing else. Two channels
+were disagreeing about what belongs in the backlog, and the inferential one had
+the better argument — it is the only one that can see a compromise made in this
+very diff, which no static analyser can ever recover because the evidence was
+never written to disk.
+
+Removed in `feat/remove-static-detectors`: ~1,500 lines, the `detection` config
+section, and the PostToolUse hook.
 
 ### D6. `record-opportunity` costs ~330 tokens of every session
 
@@ -116,29 +131,21 @@ not complexity alone. Available today at zero infrastructure cost:
 - `git log --format= --name-only | sort | uniq -c` → churn per file, for hotspot
   ranking and for a severity that means something.
 - Files that repeatedly change *together* but live apart → hidden coupling that
-  no single-file detector can ever see.
-- `git blame` age on a flagged region → fresh code (cheap to fix) versus
+  is invisible to anything reading one file at a time, linters included.
+- `git blame` age on a recorded region → fresh code (cheap to fix) versus
   decade-old code (riskier).
 - Whether the region is inside the current branch's diff → the strongest
   possible "you are already standing here" signal for the `now` gate.
 
 ### 4. Severity is asserted, never derived
 
-`--severity` is Claude's unanchored judgment, and the static detectors hardcode
-`medium`/`low` by line count. Nothing incorporates blast radius, churn, or
+`--severity` is Claude's unanchored judgment on a three-point scale, applied
+once, at the moment of noticing. Nothing incorporates blast radius, churn, or
 whether anything depends on the code. Two items marked `high` are not
-comparable, which makes "address the highest-severity items" close to arbitrary.
-Depends on 3.
+comparable, which makes "address the highest-severity items" close to
+arbitrary. Depends on 3, which is the only source of evidence available.
 
-### 5. Detectors re-scan the whole file, not the changed region
-
-The PostToolUse hook runs every enabled detector over the entire file on every
-edit, so Claude gets flagged for code it never touched. Deduplication hides the
-repetition but not the mismatch: an opportunistic refactoring plugin should
-weight what is in the current diff. `git diff` on the touched file would bound
-it.
-
-### 6. The scheduled runner still holds a blank cheque
+### 5. The scheduled runner still holds a blank cheque
 
 `boy_scout_session.py` runs `claude -p --allowedTools Read,Edit,Write,Bash`
 unattended. The prompt now demands a green baseline, a clean tree, and backing
@@ -150,20 +157,14 @@ It also runs the work inline rather than through `boy-scout-refactorer`, so the
 contract exists in two places and can drift. Sharing one source would be better
 than keeping them in sync by hand.
 
-### 7. Smaller things
+### 6. Smaller things
 
-- **Duplication matching is case-insensitive.** `normalize_line` lowercases, so
-  two blocks differing only in case read as copies.
-- **The hook matches `Write|Edit` only.** Other edit-shaped tools go unseen.
-- **Duplication still reads inside multi-line strings.** `significant_lines`
-  predates `code_lines` and does not track them, so two runs of prose inside one
-  triple-quoted block can still match. The literal-only rule catches the
-  adjacent-string shape; this one it does not. Reusing `code_lines` would fix
-  it, at the cost of never seeing duplicated SQL in two heredocs.
-- **`function_size` measures two different things.** Python counts lines of
-  code; the other languages count the lines a declaration spans, because there
-  is no AST to lean on. The finding says which, but one `max_func_lines`
-  threshold is being compared against both.
+- **Anchor fingerprints are case-insensitive.** `normalize_line` lowercases, so
+  a rename that only changes case reads as no change at all and the anchor
+  stays `current`. Inherited from the duplication detector, where masking
+  aggressively was the point; for anchors it is a small blind spot.
+- **Nothing prunes closed entries.** The JSONL grows forever, and every read
+  walks all of it. Fine at hundreds, not at tens of thousands.
 - **Shared or personal?** `.gitignore` excludes the backlog, making it private
   by default — but the concept works better as a *team* refactoring backlog, and
   JSONL-append conflicts resolve trivially (union merge via `.gitattributes`).
@@ -174,10 +175,15 @@ than keeping them in sync by hand.
 ## Suggested sequencing
 
 1. **Just-in-time surfacing (1)** — largest behaviour change for the least new
-   machinery, and the data layer is already built.
+   machinery, the data layer is already built, and with the detectors gone it is
+   the only thing left that makes a refactoring *opportunistic* rather than
+   merely *recorded*.
 2. **Renames (2)** — small, and it stops `--apply` closing entries it should
    have re-pointed.
 3. **Git signal (3), then derived severity (4)** — together they make the
-   backlog rankable rather than merely sorted.
-4. **Runner safety (6)** before anyone is encouraged to cron this.
-5. **(5) and (7)** are independent and can land at any time.
+   backlog rankable rather than merely sorted. Worth noting that (3) is the one
+   deterministic signal that survives the removal on principle: churn,
+   co-change and blame age are not in the source text, so no linter competes
+   for them.
+4. **Runner safety (5)** before anyone is encouraged to cron this.
+5. **(6)** is independent and can land at any time.

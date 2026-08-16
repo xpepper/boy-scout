@@ -17,24 +17,6 @@ from anchors import capture_anchor
 
 
 DEFAULT_CONFIG: Dict = {
-    "detection": {
-        "enabled": True,
-        # Static detectors are opt-in: record-opportunity (Claude's semantic
-        # judgment) is the sole active channel until the user explicitly
-        # enables one or more of duplication/naming/test_coverage/function_size
-        # here. Mechanical thresholds are noisy signal; see README.
-        "patterns": [],
-        "sensitivity": "balanced",
-        "ignore_paths": [
-            "vendor/",
-            "dist/",
-            "*.generated.ts",
-            "node_modules/",
-            "target/",
-            ".git/",
-        ],
-        "ignore_tests": False,
-    },
     "session": {
         # When the open (non-dismissed) backlog exceeds this size, the Stop
         # hook adds a triage nudge to its summary instead of letting the
@@ -157,9 +139,9 @@ def _suppresses_rerecording(entry: Dict) -> bool:
     """Whether an existing entry means a matching finding must not be recorded.
 
     An open entry does, obviously: that is deduplication. A `wontfix` entry
-    does too, and this is the whole point of the outcome — the detection hook
-    re-runs over the entire file on every edit, so without it the item the
-    project just declined reappears immediately and the decision means nothing.
+    does too, and this is the whole point of the outcome — a later session
+    notices the same smell with no memory of the decision, so without this the
+    item the project declined reappears and the decision means nothing.
 
     `fixed` and `stale` deliberately do not. A smell that comes back after
     being fixed is news, not a duplicate.
@@ -196,8 +178,8 @@ def get_todo(project_dir: str, todo_id: str) -> Optional[Dict]:
 def add_todo(project_dir: str, todo: Dict) -> Tuple[str, bool]:
     """Append a TODO entry to the JSONL file, unless an equivalent open entry
     already exists (same type + file, and either an overlapping line range or —
-    for file-level findings — the same description) — repeated detections of
-    the same underlying issue shouldn't bloat the backlog.
+    for file-level findings — the same description) — noticing the same
+    underlying issue twice shouldn't bloat the backlog.
 
     Returns (id, is_new): is_new is False when an existing entry was reused.
     """
