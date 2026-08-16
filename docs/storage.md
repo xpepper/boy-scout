@@ -41,6 +41,7 @@ An example:
 | `outcome` | Absent while the item is open. On closing: `fixed`, `wontfix`, or `stale`. |
 | `resolved_at` | Unix timestamp, written when the item is closed |
 | `resolution_note` | Optional. Why it was closed that way. |
+| `anchor` | Optional. What the entry pointed at when it was recorded — see below. |
 
 ## What "open" means
 
@@ -86,6 +87,50 @@ against a `wontfix` entry reports it as declined rather than as tracked.
 When the `record-opportunity` skill hits an existing entry this way, it reports
 `"is_new": false` and says the item is already tracked rather than pretending to
 have recorded something.
+
+## Anchors: keeping an entry honest
+
+An entry is a claim about code. Without something to check it against, the claim
+silently stops being true: the lines it names become different lines, or the file
+goes away, and nothing notices. A backlog whose live entries cannot be told from
+its rotted ones is one nobody drains.
+
+So each entry carries an `anchor`, captured at record time:
+
+```json
+"anchor": {
+  "file_hash": "3f2a9c1e77b04d55",
+  "fingerprint": "b81c04ee2a7f1930",
+  "line_count": 5
+}
+```
+
+`file_hash` covers the whole file, so an unchanged file needs no further work.
+`fingerprint` covers only the significant lines the entry points at — blanks and
+comments are skipped, and whitespace is collapsed, so reformatting does not read
+as a rewrite. Both are SHA-256 prefixes rather than Python's built-in `hash()`,
+which is randomised per process and would stop matching the moment it was read
+back from disk.
+
+Reading the backlog re-checks both and yields one of:
+
+| Status | Meaning |
+|--------|---------|
+| `current` | The code the entry describes is still there |
+| `moved` | Still there, at a different line range (the fingerprint was found elsewhere) |
+| `drifted` | Not there any more — the region was rewritten |
+| `missing` | The file itself is gone |
+| `unverifiable` | Nothing to check: a file-level finding, or an entry recorded before anchors existed |
+
+`boy-scout-list` annotates the actionable ones and counts them;
+`boy-scout-list --stale` narrows to them. `boy-scout-verify` reports what can be
+repaired, and `--apply` re-points `moved` entries (re-taking their anchor as it
+goes, so the pass converges) and closes `missing` ones as `stale`.
+
+**`drifted` is never closed automatically.** Changed code is evidence that an
+entry may be obsolete, not proof: a rewrite can leave the original smell exactly
+where it was. Closing on a fingerprint miss would delete real findings silently,
+so that decision stays with a person or an agent that can read the code.
 
 ## Related state files
 

@@ -49,10 +49,13 @@ has piled up:
 | `/boy-scout` | Show the backlog, what has been fixed, and what is worth doing next |
 | `/boy-scout-session [n\|id]` | Address items with one focused agent each, verified and committed separately |
 | `boy-scout-list` | The same backlog, from a terminal |
+| `boy-scout-verify` | Re-check entries against the code; `--apply` repairs what moved or vanished |
 
 Items stay open until closed with an outcome — `fixed`, `wontfix` or `stale` — so
 the backlog can answer the only question that matters about it: how much of what
-was recorded ever got improved.
+was recorded ever got improved. Each one is anchored to the code it describes, so
+entries that the code has moved past are flagged rather than quietly turning into
+fiction.
 
 Sessions can also run on a schedule, unattended:
 [scheduled resolution](docs/scheduled-resolution.md).

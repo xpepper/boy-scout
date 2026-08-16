@@ -1,7 +1,7 @@
 ---
 description: Show the Boy Scout backlog — what has been recorded, what has been fixed, and what is worth addressing next.
 argument-hint: "[file path]"
-allowed-tools: Bash(boy-scout-list:*), Read, Grep, Glob
+allowed-tools: Bash(boy-scout-list:*), Bash(boy-scout-verify:*), Read, Grep, Glob
 ---
 
 Show the user where their Boy Scout backlog stands. This command **reports and
@@ -26,10 +26,12 @@ Show the listing, then add what the raw list does not say:
 - **Where the weight is.** Several items in one file or one module is a
   stronger signal than any of them alone — that is shotgun surgery announcing
   itself, and it is worth naming as one problem rather than four.
-- **What has gone stale.** Line-anchored items whose file has changed a lot
-  since they were recorded may no longer describe anything real. Check the
-  suspicious ones (`git log --oneline -3 -- <file>`, then read the region)
-  before recommending them.
+- **What has gone stale.** The listing annotates any item whose code has moved,
+  been rewritten, or had its file deleted. If it reports any, run
+  `boy-scout-verify` to see what can be repaired mechanically, and offer to
+  apply it — that closes findings whose file is gone and re-points ones whose
+  code merely moved. Items marked as *rewritten* need a person: read the region
+  and say whether the finding still holds.
 - **The ratio.** The stats line says how much of what was recorded ever got
   fixed. If almost nothing has, the backlog is drifting toward being a
   graveyard, and the honest recommendation is to close items as `wontfix` or

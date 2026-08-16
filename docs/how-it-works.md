@@ -86,8 +86,21 @@ Each agent works on exactly one item:
 An abandoned item is a normal outcome. An opportunistic refactoring that has
 stopped being small has already cost more than it was worth.
 
+## Staying true: anchors
+
+An entry recorded against `auth.rs:88-104` still says that two commits later,
+when those lines are something else. So each entry stores a fingerprint of the
+code it points at, and every read re-checks it: the code is unchanged, it moved
+(and where to), it was rewritten, or the file is gone.
+
+`boy-scout-verify` repairs the two cases that need no judgment — re-pointing
+what moved, closing what has no file left. Rewritten code is reported and left
+open on purpose: a rewrite can leave the original smell exactly where it was, so
+closing on a fingerprint miss would quietly delete real findings.
+
 ## The backlog itself
 
 Everything lands in `.claude/boy-scout-todos.jsonl`. Read it with
-`boy-scout-list`, close items with `boy-scout-resolve`, and never edit it by
-hand — see [storage.md](storage.md) for why, and for the entry shape.
+`boy-scout-list`, repair it with `boy-scout-verify`, close items with
+`boy-scout-resolve`, and never edit it by hand — see [storage.md](storage.md)
+for why, and for the entry shape.
