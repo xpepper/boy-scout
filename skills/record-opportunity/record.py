@@ -62,7 +62,7 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--severity",    default="medium", choices=sorted(VALID_SEVERITIES))
     p.add_argument("--lines",       default="",  help="Optional line range, e.g. '42' or '42-58'")
     p.add_argument("--context",     default="",  help="Optional hint for addressing the issue")
-    p.add_argument("--outcome",     default="",  choices=("",) + tuple(sorted(VALID_OUTCOMES)),
+    p.add_argument("--outcome",     default=None, choices=sorted(VALID_OUTCOMES),
                    help="Close the item immediately — use 'fixed' when you already made the fix")
     p.add_argument("--note",        default="",  help="Optional explanation of the outcome")
     return p.parse_args()

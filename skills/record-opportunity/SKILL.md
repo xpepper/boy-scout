@@ -209,8 +209,11 @@ python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
 | `--severity` | ✅ | `low`, `medium`, `high` | See severity guide below |
 | `--lines` | optional | `42` or `42-58` | Omit for file-level issues |
 | `--context` | optional | string | Suggest an approach or name a pattern |
-| `--outcome` | optional | `fixed`, `wontfix`, `stale` | Closes the item immediately — see **Triage: now** |
-| `--note` | optional | string | Why it ended that way |
+| `--outcome` | optional | `fixed` | Only for a `now` fix already made — records and closes in one step |
+| `--note` | optional | string | What the fix was, if it isn't obvious from the description |
+
+To close an item recorded *earlier*, or to close one as `wontfix` or `stale`, use
+`resolve.py` instead — see **Closing an Item Already Recorded**.
 
 ### Severity Guide
 

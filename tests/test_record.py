@@ -197,14 +197,14 @@ def test_outcome_note_is_stored(tmp_path):
         tmp_path,
         type="dead_code",
         file="src/x.py",
-        description="Commented-out v1 parser",
+        description="Commented-out v1 parser left below the v2 implementation",
         severity="low",
-        outcome="wontfix",
-        note="Kept deliberately as a reference for the migration",
+        outcome="fixed",
+        note="Deleted the commented block; suite green",
     )
 
     entry = _read_entries(tmp_path)[0]
-    assert entry["resolution_note"] == "Kept deliberately as a reference for the migration"
+    assert entry["resolution_note"] == "Deleted the commented block; suite green"
 
 
 def test_recording_without_an_outcome_leaves_the_item_open(tmp_path):
