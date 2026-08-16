@@ -43,6 +43,34 @@ def test_summary_omits_triage_nudge_below_threshold():
     assert "triage" not in summary.lower()
 
 
+def test_summary_labels_every_recordable_type_distinctly():
+    """Every type the record CLI accepts needs its own label — otherwise the
+    Stop hook renders it as a generic "Opportunity".
+    """
+    stop_hook = _load_stop_hook()
+    spec = importlib.util.spec_from_file_location(
+        "boy_scout_record", _REPO_ROOT / "skills" / "record-opportunity" / "record.py"
+    )
+    record = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(record)
+
+    assert set(stop_hook.TYPE_LABEL) == record.VALID_TYPES
+    assert len(set(stop_hook.TYPE_LABEL.values())) == len(stop_hook.TYPE_LABEL)
+
+
+def test_summary_renders_new_types_with_their_own_label():
+    stop_hook = _load_stop_hook()
+    todos = [
+        {**_todo(0), "type": "dead_code"},
+        {**_todo(1), "type": "wrong_abstraction"},
+    ]
+
+    summary = stop_hook._format_summary(todos, open_count=2, triage_threshold=20)
+
+    assert "[Dead code]" in summary
+    assert "[Wrong abstraction]" in summary
+
+
 def test_stop_hook_stays_silent_when_no_new_todos_even_over_threshold(tmp_path):
     """Regression guard: the nudge must not turn into a nag on every Stop
     event once the backlog crosses the threshold — it should only ride

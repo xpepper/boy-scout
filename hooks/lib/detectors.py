@@ -63,10 +63,6 @@ def detect_duplication(file_path: str, config: Dict) -> List[Dict]:
     if len(sig) < min_lines * 2:
         return []
 
-    # Index: sig position → (line_num, normalized_content)
-    # We also need reverse: line_num → sig index for extend logic.
-    line_to_sig_idx = {line_num: idx for idx, (line_num, _) in enumerate(sig)}
-
     # Sliding window: hash(normalized block) → [(sig_idx_start, line_start, line_end), ...]
     buckets: Dict[int, List[Tuple[int, int, int]]] = {}
     for i in range(len(sig) - min_lines + 1):
@@ -75,7 +71,7 @@ def detect_duplication(file_path: str, config: Dict) -> List[Dict]:
         h = hash(block_text)
         buckets.setdefault(h, []).append((i, window[0][0], window[-1][0]))
 
-    def _extend_match(i: int, j: int) -> Tuple[int, int, int, int]:
+    def _extend_match(i: int, j: int) -> Tuple[int, int]:
         """Extend a matched pair (sig indices i, j) as far forward as possible."""
         while i < len(sig) and j < len(sig) and sig[i][1] == sig[j][1]:
             i += 1
@@ -84,12 +80,19 @@ def detect_duplication(file_path: str, config: Dict) -> List[Dict]:
         second_end = sig[j - 1][0]
         return first_end, second_end
 
+    def _block(idx: int) -> List[str]:
+        return [norm for _, norm in sig[idx : idx + min_lines]]
+
     # Collect all duplicate pairs (extended to max coverage), sort by first start.
     all_pairs: List[Tuple[int, int, int, int]] = []  # (fs, fe, ss, se)
     for h, occurrences in buckets.items():
         if len(occurrences) >= 2:
             i_idx, fs, _ = occurrences[0]
             j_idx, ss, _ = occurrences[1]
+            # A shared hash is only a candidate: confirm the blocks really are
+            # identical before reporting them as duplicated.
+            if _block(i_idx) != _block(j_idx):
+                continue
             fe, se = _extend_match(i_idx, j_idx)
             all_pairs.append((fs, fe, ss, se))
     all_pairs.sort()
@@ -255,10 +258,10 @@ def detect_test_coverage_gap(
     if _find_test_file(file_path, project_dir):
         return []
 
-    rel = _rel_path(file_path, project_dir)
     return [{
         "type": "test_coverage",
-        "locations": [{"line_start": 1, "line_end": 1}],
+        # A missing test file is a property of the file, not of any line in it.
+        "locations": [],
         "severity": "medium",
         "description": (
             f"No test file found for {Path(file_path).name} — "
@@ -410,14 +413,3 @@ def run_all_detectors(
         findings.extend(detect_function_size(file_path, config))
 
     return findings
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _rel_path(file_path: str, project_dir: str) -> str:
-    try:
-        return str(Path(file_path).relative_to(project_dir))
-    except ValueError:
-        return file_path

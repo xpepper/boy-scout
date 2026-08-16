@@ -7,6 +7,7 @@ File locking prevents concurrent writes from parallel hook executions.
 import fcntl
 import json
 import os
+import re
 import time
 import uuid
 from pathlib import Path
@@ -99,24 +100,56 @@ def _locations_overlap(a: List[Dict], b: List[Dict]) -> bool:
     )
 
 
+_NON_ALNUM = re.compile(r"[^0-9a-z]+")
+
+
+def _normalize_description(text: str) -> str:
+    """Reduce a description to its words, so that trivial differences in case,
+    punctuation or spacing don't make the same observation look like a new one.
+    """
+    return _NON_ALNUM.sub(" ", str(text).casefold()).strip()
+
+
+def _same_finding(entry: Dict, todo: Dict) -> bool:
+    """Whether two findings for the same type + file describe the same issue.
+
+    Line-anchored findings are identified by their line range: the same region
+    flagged again is the same issue however it is worded. File-level findings
+    have no line anchor to compare, so they are identified by their
+    description instead — otherwise every file-level finding in a file would
+    collide with every other one of the same type.
+    """
+    entry_locations = entry.get("locations") or []
+    todo_locations = todo.get("locations") or []
+
+    if not entry_locations and not todo_locations:
+        return _normalize_description(entry.get("description", "")) == _normalize_description(
+            todo.get("description", "")
+        )
+    if not entry_locations or not todo_locations:
+        return False
+    return _locations_overlap(entry_locations, todo_locations)
+
+
 def _find_open_duplicate(project_dir: str, todo: Dict) -> Optional[str]:
-    """Return the id of an existing, open (non-dismissed) TODO that covers
-    the same type + file + overlapping line range, if any.
+    """Return the id of an existing, open (non-dismissed) TODO describing the
+    same issue in the same file, if any.
     """
     for entry in list_todos(project_dir):
         if entry.get("type") != todo.get("type"):
             continue
         if entry.get("file_path") != todo.get("file_path"):
             continue
-        if _locations_overlap(entry.get("locations", []), todo.get("locations", [])):
+        if _same_finding(entry, todo):
             return entry.get("id")
     return None
 
 
 def add_todo(project_dir: str, todo: Dict) -> Tuple[str, bool]:
     """Append a TODO entry to the JSONL file, unless an equivalent open entry
-    already exists (same type + file + overlapping lines) — repeated
-    detections of the same underlying issue shouldn't bloat the backlog.
+    already exists (same type + file, and either an overlapping line range or —
+    for file-level findings — the same description) — repeated detections of
+    the same underlying issue shouldn't bloat the backlog.
 
     Returns (id, is_new): is_new is False when an existing entry was reused.
     """
