@@ -290,6 +290,25 @@ def test_a_test_in_a_nested_test_tree_counts_as_coverage(tmp_path):
     assert detect_test_coverage_gap(str(source), {}, str(tmp_path)) == []
 
 
+def test_a_hyphenated_script_finds_its_underscored_test(tmp_path):
+    """Python module names cannot contain hyphens, so the test for
+    `hooks/post-tool-use.py` has to be `tests/test_post_tool_use.py`. Looking
+    only for `test_post-tool-use.py` reported the hook as untested — which it
+    is not, and never was.
+    """
+    source = _source(tmp_path, "hooks/post-tool-use.py")
+    _source(tmp_path, "tests/test_post_tool_use.py", "def test_hook():\n    pass\n")
+
+    assert detect_test_coverage_gap(str(source), {}, str(tmp_path)) == []
+
+
+def test_an_empty_package_marker_is_not_reported_as_untested(tmp_path):
+    """`hooks/lib/__init__.py` has nothing in it to test."""
+    source = _source(tmp_path, "hooks/lib/__init__.py", "")
+
+    assert detect_test_coverage_gap(str(source), {}, str(tmp_path)) == []
+
+
 def test_a_missing_test_is_still_reported_when_the_tree_exists(tmp_path):
     """The nested search must not turn into "any test file anywhere will do"."""
     source = _source(tmp_path, "src/billing/invoice.py")

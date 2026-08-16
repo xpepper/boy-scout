@@ -274,16 +274,27 @@ def _find_test_file(file_path: str, project_dir: str) -> Optional[str]:
     trees (`src/billing/invoice.py` → `tests/billing/test_invoice.py`) live.
     The walk stays inside test directories, so it can only ever find a file
     named after this one — never "some test exists, close enough".
+
+    Hyphens and underscores are treated as interchangeable in the stem: a
+    Python module name cannot contain a hyphen, so the test for a script
+    called `post-tool-use.py` is necessarily `test_post_tool_use.py`.
     """
     src = Path(file_path)
     stem = src.stem
     suffix = src.suffix
     root = Path(project_dir)
 
-    candidates = [
-        f"{stem}_test{suffix}", f"test_{stem}{suffix}",
-        f"{stem}.test{suffix}", f"{stem}.spec{suffix}", f"{stem}_spec{suffix}",
-    ]
+    stem_variants = [stem]
+    for variant in (stem.replace("-", "_"), stem.replace("_", "-")):
+        if variant not in stem_variants:
+            stem_variants.append(variant)
+
+    candidates = []
+    for name in stem_variants:
+        candidates += [
+            f"{name}_test{suffix}", f"test_{name}{suffix}",
+            f"{name}.test{suffix}", f"{name}.spec{suffix}", f"{name}_spec{suffix}",
+        ]
 
     test_roots = [root / d for d in TEST_DIRS]
     for directory in [src.parent, *test_roots]:
@@ -314,6 +325,11 @@ def detect_test_coverage_gap(
 
     language = detect_language(file_path)
     if language not in TESTABLE_LANGUAGES:
+        return []
+
+    # A package marker or a placeholder holds no behaviour to test.
+    content = read_content(file_path)
+    if content is None or not significant_lines(content, language):
         return []
 
     if _find_test_file(file_path, project_dir):
