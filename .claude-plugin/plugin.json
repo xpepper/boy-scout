@@ -1,7 +1,7 @@
 {
   "name": "boy-scout",
-  "version": "0.1.0",
-  "description": "Opportunistic refactoring detection via Boy Scout Rule: leave the code better than you found it.",
+  "version": "0.2.0",
+  "description": "Opportunistic refactoring: record what you notice while working, then address it with focused agents. Leave the code better than you found it.",
   "author": {
     "name": "Pietro Di Bello"
   },
