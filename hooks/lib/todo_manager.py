@@ -10,13 +10,17 @@ import os
 import time
 import uuid
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 
 DEFAULT_CONFIG: Dict = {
     "detection": {
         "enabled": True,
-        "patterns": ["duplication", "naming", "test_coverage", "function_size"],
+        # Static detectors are opt-in: record-opportunity (Claude's semantic
+        # judgment) is the sole active channel until the user explicitly
+        # enables one or more of duplication/naming/test_coverage/function_size
+        # here. Mechanical thresholds are noisy signal; see README.
+        "patterns": [],
         "sensitivity": "balanced",
         "ignore_paths": [
             "vendor/",
@@ -33,6 +37,10 @@ DEFAULT_CONFIG: Dict = {
     },
     "session": {
         "auto_clear": False,
+        # When the open (non-dismissed) backlog exceeds this size, the Stop
+        # hook adds a triage nudge to its summary instead of letting the
+        # backlog grow silently forever.
+        "triage_threshold": 20,
     },
 }
 
@@ -83,8 +91,39 @@ def _deep_copy(d: Dict) -> Dict:
     return json.loads(json.dumps(d))
 
 
-def add_todo(project_dir: str, todo: Dict) -> str:
-    """Append a TODO entry to the JSONL file. Returns the assigned id."""
+def _locations_overlap(a: List[Dict], b: List[Dict]) -> bool:
+    return any(
+        loc_a["line_start"] <= loc_b["line_end"] and loc_b["line_start"] <= loc_a["line_end"]
+        for loc_a in a
+        for loc_b in b
+    )
+
+
+def _find_open_duplicate(project_dir: str, todo: Dict) -> Optional[str]:
+    """Return the id of an existing, open (non-dismissed) TODO that covers
+    the same type + file + overlapping line range, if any.
+    """
+    for entry in list_todos(project_dir):
+        if entry.get("type") != todo.get("type"):
+            continue
+        if entry.get("file_path") != todo.get("file_path"):
+            continue
+        if _locations_overlap(entry.get("locations", []), todo.get("locations", [])):
+            return entry.get("id")
+    return None
+
+
+def add_todo(project_dir: str, todo: Dict) -> Tuple[str, bool]:
+    """Append a TODO entry to the JSONL file, unless an equivalent open entry
+    already exists (same type + file + overlapping lines) — repeated
+    detections of the same underlying issue shouldn't bloat the backlog.
+
+    Returns (id, is_new): is_new is False when an existing entry was reused.
+    """
+    existing_id = _find_open_duplicate(project_dir, todo)
+    if existing_id is not None:
+        return existing_id, False
+
     path = _todos_path(project_dir)
     todo_id = uuid.uuid4().hex[:8]
     entry = {
@@ -99,7 +138,7 @@ def add_todo(project_dir: str, todo: Dict) -> str:
             f.write(json.dumps(entry) + "\n")
         finally:
             fcntl.flock(f, fcntl.LOCK_UN)
-    return todo_id
+    return todo_id, True
 
 
 def list_todos(
