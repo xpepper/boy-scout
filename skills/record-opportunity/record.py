@@ -132,7 +132,7 @@ def main() -> None:
     result = {
         "id":       todo_id,
         "is_new":   is_new,
-        "outcome":  args.outcome or None,
+        "outcome":  args.outcome,
         "position": total,
         "message":  message,
     }
