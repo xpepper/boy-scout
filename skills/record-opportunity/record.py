@@ -31,7 +31,15 @@ sys.path.insert(0, str(Path(_plugin_root) / "hooks" / "lib"))
 
 from todo_manager import add_todo, list_todos  # noqa: E402
 
-VALID_TYPES = {"duplication", "function_size", "naming", "test_coverage", "custom"}
+VALID_TYPES = {
+    "duplication",
+    "function_size",
+    "naming",
+    "test_coverage",
+    "dead_code",
+    "wrong_abstraction",
+    "custom",
+}
 VALID_SEVERITIES = {"low", "medium", "high"}
 
 
