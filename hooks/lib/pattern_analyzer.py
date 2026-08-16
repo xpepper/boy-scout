@@ -192,8 +192,10 @@ def code_lines(content: str, language: str) -> List[Tuple[int, str]]:
     return result
 
 
-# The tokens `normalize_line` leaves behind in place of literals.
-_MASKED_TOKEN_RE = re.compile(r"\"s\"|'s'|\bn\b")
+# The tokens `normalize_line` leaves behind in place of literals, with any
+# string prefix attached: `f"..."` normalizes to `f"s"`, and that `f` is part
+# of the literal rather than an identifier the line mentions.
+_MASKED_TOKEN_RE = re.compile(r"(?:\b[a-z]{1,2})?(?:\"s\"|'s')|\bn\b")
 
 
 def is_literal_only(normalized: str) -> bool:

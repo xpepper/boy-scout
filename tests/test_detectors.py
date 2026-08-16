@@ -166,6 +166,36 @@ def test_duplication_ignores_a_table_of_unrelated_literals(tmp_path):
     assert detect_duplication(str(source), {}) == []
 
 
+_INTERPOLATED_PROSE = '''\
+def build_prompt(count, limit):
+    return (
+        f"You are running a scheduled session. There are {count} open entries."
+        "Read them before you touch anything."
+        f"Pick up to {limit} of them, preferring contained ones."
+        "Run the tests first and confirm they pass."
+        f"Address at most {limit} in one sitting."
+        "Commit each one on its own."
+        f"Stop after {count} attempts, whatever the outcome."
+        "Back out rather than pushing through."
+        f"Report what you did across all {count} of them."
+        "Close each entry with an outcome."
+        f"Leave the other {limit} alone."
+        "Say so if it stopped being small."
+    )
+'''
+
+
+def test_duplication_ignores_prose_carrying_interpolations(tmp_path):
+    """An `f` prefix survives normalisation, so a window of f-strings was not
+    recognised as literal-only. Prompt strings are the shape where this bites:
+    they are exactly the long runs of prose that mask into each other.
+    """
+    source = tmp_path / "prompt.py"
+    source.write_text(_INTERPOLATED_PROSE)
+
+    assert detect_duplication(str(source), {}) == []
+
+
 def test_duplication_ignores_consecutive_lines_of_prose(tmp_path):
     """Same cause, the shape a user meets most: any two runs of a long prompt
     string normalise identically and were reported as duplicated.
