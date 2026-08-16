@@ -141,3 +141,93 @@ def test_wrapper_runs_without_any_claude_variables(tmp_path):
     assert result.returncode == 0, result.stderr
     assert "findable from a bare shell" in result.stdout
     assert os.access(_BIN, os.X_OK)
+
+
+def _anchored_project(tmp_path, content="def load(path):\n    return open(path).read()\n"):
+    source = tmp_path / "src" / "app.py"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(content)
+    return source
+
+
+def test_an_item_whose_code_is_untouched_is_not_annotated(tmp_path):
+    """Annotating everything is the same as annotating nothing."""
+    _anchored_project(tmp_path)
+    _add(tmp_path, file_path="src/app.py", description="load does its own IO")
+
+    report = _load().render(str(tmp_path))
+
+    assert "drifted" not in report
+    assert "no longer" not in report
+
+
+def test_an_item_whose_file_is_gone_says_so(tmp_path):
+    source = _anchored_project(tmp_path)
+    _add(tmp_path, file_path="src/app.py", description="load does its own IO")
+    source.unlink()
+
+    report = _load().render(str(tmp_path))
+
+    assert "src/app.py" in report
+    assert "no longer exists" in report
+
+
+def test_an_item_whose_code_was_rewritten_is_flagged_but_not_closed(tmp_path):
+    """Changed code is evidence, not proof: a rewrite can leave the smell right
+    where it was. The item stays open and stays listed.
+    """
+    _anchored_project(tmp_path)
+    todo_id = _add(tmp_path, file_path="src/app.py", description="load does its own IO",
+                   locations=[{"line_start": 1, "line_end": 2}])
+    _anchored_project(tmp_path, "def load(path):\n    with open(path) as f:\n        return f.read()\n")
+
+    report = _load().render(str(tmp_path))
+
+    assert todo_id in report
+    assert "changed since" in report
+
+
+def test_an_item_whose_code_moved_shows_where_it_is_now(tmp_path):
+    _anchored_project(tmp_path)
+    _add(tmp_path, file_path="src/app.py", description="load does its own IO",
+         locations=[{"line_start": 1, "line_end": 2}])
+    _anchored_project(tmp_path, "import os\nimport sys\n\n\ndef load(path):\n    return open(path).read()\n")
+
+    report = _load().render(str(tmp_path))
+
+    assert "moved" in report
+    assert "5-6" in report
+
+
+def test_the_report_counts_how_much_of_the_backlog_is_suspect(tmp_path):
+    source = _anchored_project(tmp_path)
+    _add(tmp_path, file_path="src/app.py", description="load does its own IO")
+    source.unlink()
+
+    report = _load().render(str(tmp_path))
+
+    assert "1 of 1" in report
+
+
+def test_stale_narrows_the_listing_to_what_needs_a_decision(tmp_path):
+    source = _anchored_project(tmp_path)
+    (tmp_path / "src" / "other.py").write_text("def fine():\n    return 1\n")
+    _add(tmp_path, file_path="src/app.py", description="gone with the file")
+    _add(tmp_path, file_path="src/other.py", description="never anchored at all")
+    source.unlink()
+
+    report = _load().render(str(tmp_path), stale_only=True)
+
+    assert "gone with the file" in report
+    assert "never anchored at all" not in report
+
+
+def test_json_output_carries_the_anchor_status(tmp_path):
+    source = _anchored_project(tmp_path)
+    _add(tmp_path, file_path="src/app.py", description="load does its own IO")
+    source.unlink()
+
+    payload = json.loads(_load().render(str(tmp_path), as_json=True))
+
+    assert payload["open"][0]["anchor_status"] == "missing"
+    assert payload["stats"]["suspect"] == 1

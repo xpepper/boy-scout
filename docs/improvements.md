@@ -1,14 +1,15 @@
 # Boy Scout — Improvement Opportunities
 
-Last reviewed 2026-08-16, on branch `feat/focused-agents-and-review-fixes`.
+Last reviewed 2026-08-16, on branch `feat/anchor-staleness`.
 
 The plugin's goal is **opportunistic refactoring**: the thing TDD skills skip,
 because they optimise the red-green-refactor loop of the *current* task and keep
 no memory of what they noticed along the way.
 
-The capture half of that is solid. The act-on-it half now exists — focused
-agents, one per item — and the remaining items below are mostly about making the
-backlog *trustworthy* enough to be worth draining.
+The capture half is solid, the act-on-it half now exists (focused agents, one per
+item), and entries no longer quietly stop describing their code. What is left is
+mostly about *timing* — surfacing a finding while acting on it is still cheap —
+and about ranking findings by something better than an asserted severity.
 
 ---
 
@@ -30,26 +31,13 @@ backlog *trustworthy* enough to be worth draining.
 | Two config keys nothing read | Removed, with a test that every key is read |
 | `function_size` silently dead for Elm | Offside-rule sizing for Elm |
 | README carried the mechanics | README is the pitch; mechanics in `docs/how-it-works.md` |
+| Entries silently stopped describing their code | Anchored at record time; `boy-scout-list` flags drift, `boy-scout-verify --apply` repairs it |
 
 ---
 
 ## Open, roughly by leverage
 
-### 1. Findings go stale and nothing notices
-
-A finding says `src/routes/auth.rs:88-104`. Two commits later those lines are
-something else. Nothing re-validates, so the backlog accumulates entries
-pointing at code that no longer exists, and nothing distinguishes the live ones
-from the rotted ones — which is exactly how a backlog stops being trustworthy.
-
-Record a content fingerprint (a hash of the referenced lines, or the file's blob
-SHA) at detection time; on read, mark entries whose anchor no longer matches and
-offer to close them as `stale`. Git makes this cheap.
-
-`/boy-scout` currently papers over this by telling Claude to eyeball suspicious
-items. That is a holding position, not a fix.
-
-### 2. Just-in-time surfacing
+### 1. Just-in-time surfacing
 
 The Stop hook reports *after* the moment acting was cheap. A `PreToolUse` hook
 that sees Claude about to edit `src/billing/invoice.py` and injects "2 open Boy
@@ -59,6 +47,17 @@ which is what makes a refactoring *opportunistic* rather than *scheduled*.
 `boy-scout-list --file <path>` already exists and is the whole data layer this
 needs. The open question is noise: it fires on every edit, so it wants a
 per-session dedup and probably a severity floor.
+
+### 2. Anchors do not follow a file that was renamed
+
+`git mv src/auth.py src/authentication.py` and every entry about that file
+reports `missing`, then gets closed as stale by `boy-scout-verify --apply` —
+even though the code, and the finding, are both perfectly alive.
+
+The fix is the same fingerprint machinery, widened: before declaring a file
+gone, ask git whether it was renamed (`git log --diff-filter=R --name-status`),
+or search the repository for the fingerprint. Until then, `--apply` on a branch
+that renamed files will close entries it should have re-pointed.
 
 ### 3. Git history is free prioritisation signal, still unused
 
@@ -118,9 +117,10 @@ than keeping them in sync by hand.
 
 ## Suggested sequencing
 
-1. **Staleness (1)** — everything else assumes the backlog describes reality.
-2. **Just-in-time surfacing (2)** — largest behaviour change for the least new
+1. **Just-in-time surfacing (1)** — largest behaviour change for the least new
    machinery, and the data layer is already built.
+2. **Renames (2)** — small, and it stops `--apply` closing entries it should
+   have re-pointed.
 3. **Git signal (3), then derived severity (4)** — together they make the
    backlog rankable rather than merely sorted.
 4. **Runner safety (6)** before anyone is encouraged to cron this.

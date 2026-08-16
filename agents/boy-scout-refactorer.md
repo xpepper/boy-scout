@@ -22,6 +22,14 @@ boy-scout-list --json
 Find your id. If it is not there, or it is already closed, stop and say so —
 do not go looking for something else to fix.
 
+Check its `anchor_status` before trusting the line numbers:
+
+- `moved` — the code is intact but elsewhere; use `current_locations`.
+- `drifted` — the region was rewritten since the item was recorded. **Read it
+  before doing anything.** If the finding no longer holds, close it as `stale`
+  with a note and stop; if it still holds, carry on against the code as it is.
+- `missing` — the file is gone. Close it as `stale` and stop.
+
 The entry tells you the type, the file, the line range, the description, and
 often a `context` line suggesting an approach. The suggestion is a suggestion:
 if the code says otherwise, follow the code and say why in your report.

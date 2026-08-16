@@ -1,0 +1,6 @@
+#!/bin/sh
+# Check Boy Scout entries against the code; --apply makes the safe repairs.
+# Locates the plugin from its own path — see boy-scout-record for why.
+set -e
+BIN_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+exec python3 "$BIN_DIR/../scripts/verify_anchors.py" "$@"

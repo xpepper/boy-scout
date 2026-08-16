@@ -25,25 +25,34 @@ protected branch, ask before proceeding rather than committing to it.
 
 ## 2. Pick the items
 
+First clear out anything that no longer describes the code, so no agent is
+dispatched at a phantom:
+
+```bash
+boy-scout-verify --apply
+```
+
+That re-points items whose code merely moved and closes ones whose file is
+gone. It deliberately leaves items whose code was *rewritten* open — read those
+yourself before choosing them, and close them by hand if the finding no longer
+holds:
+
+```bash
+boy-scout-resolve --id <id> --outcome stale --note "<why>"
+```
+
+Then pick from what is left:
+
 ```bash
 boy-scout-list --limit 10
 ```
 
 Choose the requested number, highest severity first, preferring items that are
 **contained** — a rename, an extraction, a missing test — over anything that
-smells like a design decision. Skip and say why for:
+smells like a design decision. Skip, and say why, for items needing a product
+or architecture call: those are for the user, not for an agent working alone.
 
-- items whose file has changed substantially since they were recorded, until
-  you have checked the region still looks the way the item describes;
-- items that need a product or architecture call. Those are for the user, not
-  for an agent working alone.
-
-Show the user the shortlist, with ids, before dispatching. If any item is
-clearly no longer real, close it instead:
-
-```bash
-boy-scout-resolve --id <id> --outcome stale --note "<why>"
-```
+Show the user the shortlist, with ids, before dispatching.
 
 ## 3. Dispatch one agent per item, sequentially
 
