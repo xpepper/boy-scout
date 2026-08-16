@@ -27,7 +27,7 @@ An example:
 | `id` | 8 hex characters, generated on insert |
 | `type` | Category of the opportunity. The accepted values live in the schema; the `record-opportunity` CLI validates against the same set. |
 | `file_path` | Relative to the project root |
-| `locations` | One or more `{line_start, line_end}` ranges. File-level findings use `1-1`. |
+| `locations` | Zero or more `{line_start, line_end}` ranges. File-level findings (a missing test file, say) carry an empty list, not a placeholder range. |
 | `severity` | `low`, `medium`, or `high` |
 | `detected_at` | Unix timestamp, used by the Stop hook to work out what is new |
 | `source` | `"hook"` for static detection, `"skill"` for Claude's own semantic observation via `record-opportunity` |
@@ -44,9 +44,21 @@ is no separate "done" state and nothing removes lines from the file.
 ## Deduplication
 
 Before appending, a new finding is checked against existing **open** entries
-with the same `type`, the same `file_path`, and an overlapping line range. If
-one matches, its `id` is reused and nothing new is written, so repeatedly
-touching the same file does not re-record the same issue on every edit.
+with the same `type` and the same `file_path`. If one matches, its `id` is
+reused and nothing new is written, so repeatedly touching the same file does
+not re-record the same issue on every edit.
+
+What counts as a match depends on whether the finding is anchored to lines:
+
+| Both findings | Match when |
+|---------------|-----------|
+| Line-anchored | Their line ranges overlap. The same region flagged again is the same issue however it happens to be worded. |
+| File-level (empty `locations`) | Their descriptions match once normalised (case, punctuation, and whitespace collapsed). |
+| One of each | Never. A file-level finding and a line-anchored one are different claims about the file. |
+
+Keeping the two apart matters: file-level findings once shared a placeholder
+range of `1-1`, which made every file-level finding in a file collide with
+every other one of the same type, and the loser was silently discarded.
 
 Once an entry is dismissed it no longer blocks anything: if the same issue
 resurfaces later, it is recorded again as a new entry.
