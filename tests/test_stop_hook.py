@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -123,3 +124,26 @@ def test_stop_hook_stays_silent_when_no_new_todos_even_over_threshold(tmp_path):
 
     output = json.loads(result.stdout)
     assert "systemMessage" not in output
+
+
+def test_summary_names_the_command_that_acts_on_the_findings():
+    """The report is the only moment the user is looking at the backlog. Ending
+    it with "start a session whenever you're ready" leaves them to work out
+    what that means; naming the command makes the next step one keystroke.
+    """
+    stop_hook = _load_stop_hook()
+
+    summary = stop_hook._format_summary([_todo(0)], open_count=1, triage_threshold=20)
+
+    assert "/boy-scout-session" in summary
+
+
+def test_the_commands_the_summary_advertises_exist():
+    commands = {path.stem for path in (_REPO_ROOT / "commands").glob("*.md")}
+    stop_hook = _load_stop_hook()
+
+    summary = stop_hook._format_summary([_todo(0)], open_count=99, triage_threshold=20)
+
+    advertised = set(re.findall(r"/(boy-scout[a-z-]*)", summary))
+    assert advertised, "the summary advertises no command at all"
+    assert advertised <= commands, f"summary points at missing commands: {advertised - commands}"
