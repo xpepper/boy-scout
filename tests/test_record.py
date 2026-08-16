@@ -147,6 +147,17 @@ def test_schema_enumerates_exactly_the_valid_types():
     assert set(schema["properties"]["type"]["enum"]) == _load_record_module().VALID_TYPES
 
 
+def test_schema_enumerates_exactly_the_valid_outcomes():
+    """Same guard, one level down: the outcomes the store can hold and the
+    outcomes the schema advertises must not drift apart either.
+    """
+    import todo_manager
+
+    schema = json.loads(_SCHEMA.read_text())
+
+    assert set(schema["properties"]["outcome"]["enum"]) == set(todo_manager.VALID_OUTCOMES)
+
+
 def test_skill_md_documents_every_valid_type():
     skill_md = _SKILL_MD.read_text()
 

@@ -1,6 +1,8 @@
 import json
 
-from todo_manager import add_todo, list_todos, load_config
+import pytest
+
+from todo_manager import add_todo, list_todos, load_config, resolve_todo
 
 
 def test_default_config_has_no_enabled_detectors_by_default(tmp_path):
@@ -175,6 +177,95 @@ def test_add_todo_still_dedupes_overlapping_lines_regardless_of_description(tmp_
 
     assert is_new is False
     assert len(list_todos(str(tmp_path))) == 1
+
+
+def _finding(**overrides):
+    return {
+        "type": "naming",
+        "file_path": "src/a.py",
+        "locations": [{"line_start": 10, "line_end": 12}],
+        "description": "tmp doesn't say what it holds",
+        "severity": "low",
+        "source": "skill",
+        **overrides,
+    }
+
+
+def test_resolve_todo_records_the_outcome_and_closes_the_item(tmp_path):
+    """A fixed item is closed, but *how* it ended has to survive: 'fixed' is
+    what makes recorded-vs-resolved computable, and `dismissed` alone can't
+    tell a fix from a shrug.
+    """
+    todo_id, _ = add_todo(str(tmp_path), _finding())
+
+    assert resolve_todo(str(tmp_path), todo_id, "fixed") is True
+
+    assert list_todos(str(tmp_path)) == []
+    closed = list_todos(str(tmp_path), include_dismissed=True)
+    assert len(closed) == 1
+    assert closed[0]["outcome"] == "fixed"
+    assert closed[0]["dismissed"] is True
+    assert closed[0]["resolved_at"] > 0
+
+
+def test_resolve_todo_stores_an_optional_note(tmp_path):
+    todo_id, _ = add_todo(str(tmp_path), _finding())
+
+    resolve_todo(str(tmp_path), todo_id, "wontfix", note="Generated file, not ours to clean")
+
+    closed = list_todos(str(tmp_path), include_dismissed=True)[0]
+    assert closed["outcome"] == "wontfix"
+    assert closed["resolution_note"] == "Generated file, not ours to clean"
+
+
+def test_resolve_todo_leaves_other_entries_untouched(tmp_path):
+    first_id, _ = add_todo(str(tmp_path), _finding())
+    second_id, _ = add_todo(str(tmp_path), _finding(file_path="src/b.py"))
+
+    resolve_todo(str(tmp_path), first_id, "fixed")
+
+    still_open = list_todos(str(tmp_path))
+    assert [t["id"] for t in still_open] == [second_id]
+    assert "outcome" not in still_open[0]
+
+
+def test_resolve_todo_preserves_lines_it_cannot_parse(tmp_path):
+    """Resolution rewrites the whole store, so a line it can't read must be
+    carried over rather than quietly dropped.
+    """
+    todo_id, _ = add_todo(str(tmp_path), _finding())
+    path = tmp_path / ".claude" / "boy-scout-todos.jsonl"
+    path.write_text(path.read_text() + "{ not json\n")
+
+    resolve_todo(str(tmp_path), todo_id, "fixed")
+
+    assert "{ not json" in path.read_text()
+
+
+def test_resolve_todo_reports_an_unknown_id(tmp_path):
+    add_todo(str(tmp_path), _finding())
+
+    assert resolve_todo(str(tmp_path), "deadbeef", "fixed") is False
+
+
+def test_resolve_todo_rejects_an_unknown_outcome(tmp_path):
+    todo_id, _ = add_todo(str(tmp_path), _finding())
+
+    with pytest.raises(ValueError):
+        resolve_todo(str(tmp_path), todo_id, "sorted-out")
+
+
+def test_resolved_item_no_longer_deduplicates_a_later_detection(tmp_path):
+    """If the same smell comes back after being fixed, that is news, not a
+    duplicate — the existing dismissal behaviour has to hold for outcomes too.
+    """
+    todo_id, _ = add_todo(str(tmp_path), _finding())
+    resolve_todo(str(tmp_path), todo_id, "fixed")
+
+    new_id, is_new = add_todo(str(tmp_path), _finding())
+
+    assert is_new is True
+    assert new_id != todo_id
 
 
 def test_add_todo_redetects_after_dismissal(tmp_path):

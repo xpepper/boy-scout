@@ -50,7 +50,20 @@
     },
     "dismissed": {
       "type": "boolean",
-      "description": "Whether this item has been reviewed and dismissed"
+      "description": "Whether this item is closed (dismissed or resolved)"
+    },
+    "outcome": {
+      "type": "string",
+      "enum": ["fixed", "wontfix", "stale"],
+      "description": "How a closed item ended: fixed (changed and verified), wontfix (real but not worth acting on), stale (no longer applies). Absent while the item is open."
+    },
+    "resolved_at": {
+      "type": "number",
+      "description": "Unix timestamp when the outcome was recorded"
+    },
+    "resolution_note": {
+      "type": "string",
+      "description": "Optional explanation of the outcome"
     },
     "context": {
       "type": "string",
