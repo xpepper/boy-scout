@@ -71,6 +71,55 @@ def test_duplication_verifies_block_content_before_reporting(tmp_path, monkeypat
     assert detect_duplication(str(source), {}) == []
 
 
+_SELF_SIMILAR_RUN = '''\
+def flatten(row):
+    parts = []
+    parts.append(row[0])
+    parts.append(row[1])
+    parts.append(row[2])
+    parts.append(row[3])
+    parts.append(row[4])
+    parts.append(row[5])
+    parts.append(row[6])
+    parts.append(row[7])
+    return parts
+
+
+def summarise(rows):
+    flattened = [flatten(row) for row in rows]
+    widest = max(len(item) for item in flattened)
+    return widest
+'''
+
+
+def test_duplication_never_reports_a_block_as_duplicating_itself(tmp_path):
+    """Consecutive lines of the same shape make a sliding window match its own
+    neighbour one line down, and the overlap check only ever compared a new
+    pair against pairs already reported. Reporting "lines 3-10 and 4-11" is a
+    self-overlap, not a copy-paste.
+    """
+    source = tmp_path / "flatten.py"
+    source.write_text(_SELF_SIMILAR_RUN)
+
+    findings = detect_duplication(str(source), {})
+
+    assert findings == []
+
+
+def test_duplication_still_finds_a_real_copy_past_a_self_similar_run(tmp_path):
+    """Rejecting self-overlap must not throw away the genuine match that lies
+    further down the same hash bucket.
+    """
+    source = tmp_path / "loader.py"
+    source.write_text(_DUPLICATED)
+
+    findings = detect_duplication(str(source), {})
+
+    assert len(findings) == 1
+    first, second = findings[0]["locations"]
+    assert first["line_end"] < second["line_start"]
+
+
 def test_test_coverage_gap_is_recorded_as_a_file_level_finding(tmp_path):
     """A missing test file is a property of the whole file, so the finding
     must carry no line anchor rather than a fabricated lines 1-1 range.

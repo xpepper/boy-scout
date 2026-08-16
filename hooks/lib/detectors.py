@@ -72,8 +72,19 @@ def detect_duplication(file_path: str, config: Dict) -> List[Dict]:
         buckets.setdefault(h, []).append((i, window[0][0], window[-1][0]))
 
     def _extend_match(i: int, j: int) -> Tuple[int, int]:
-        """Extend a matched pair (sig indices i, j) as far forward as possible."""
-        while i < len(sig) and j < len(sig) and sig[i][1] == sig[j][1]:
+        """Extend a matched pair (sig indices i, j) as far forward as possible.
+
+        Extension stops before the first block can reach the second one. A run
+        of similar-looking lines — the entries of a table literal, say — would
+        otherwise let the first block grow past where the second begins, and a
+        block that overlaps its own copy is not a copy.
+        """
+        second_start_idx = j
+        while (
+            i < second_start_idx
+            and j < len(sig)
+            and sig[i][1] == sig[j][1]
+        ):
             i += 1
             j += 1
         first_end  = sig[i - 1][0]
@@ -83,16 +94,35 @@ def detect_duplication(file_path: str, config: Dict) -> List[Dict]:
     def _block(idx: int) -> List[str]:
         return [norm for _, norm in sig[idx : idx + min_lines]]
 
+    def _first_disjoint_pair(
+        occurrences: List[Tuple[int, int, int]]
+    ) -> Optional[Tuple[int, int]]:
+        """The earliest pair of occurrences whose windows do not overlap.
+
+        Consecutive windows in a self-similar run share a hash while covering
+        almost the same lines. Skipping to the first genuinely disjoint partner
+        rejects those without discarding a real copy that sits further down the
+        same bucket.
+        """
+        i_idx = occurrences[0][0]
+        for j_idx, _, _ in occurrences[1:]:
+            if j_idx >= i_idx + min_lines:
+                return i_idx, j_idx
+        return None
+
     # Collect all duplicate pairs (extended to max coverage), sort by first start.
     all_pairs: List[Tuple[int, int, int, int]] = []  # (fs, fe, ss, se)
     for h, occurrences in buckets.items():
         if len(occurrences) >= 2:
-            i_idx, fs, _ = occurrences[0]
-            j_idx, ss, _ = occurrences[1]
+            pair = _first_disjoint_pair(occurrences)
+            if pair is None:
+                continue
+            i_idx, j_idx = pair
             # A shared hash is only a candidate: confirm the blocks really are
             # identical before reporting them as duplicated.
             if _block(i_idx) != _block(j_idx):
                 continue
+            fs, ss = sig[i_idx][0], sig[j_idx][0]
             fe, se = _extend_match(i_idx, j_idx)
             all_pairs.append((fs, fe, ss, se))
     all_pairs.sort()
