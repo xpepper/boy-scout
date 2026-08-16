@@ -13,6 +13,8 @@ import uuid
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from anchors import capture_anchor
+
 
 DEFAULT_CONFIG: Dict = {
     "detection": {
@@ -211,6 +213,12 @@ def add_todo(project_dir: str, todo: Dict) -> Tuple[str, bool]:
         "dismissed": False,
         **todo,
     }
+    # Anchor at the moment of recording, while the code is definitely the code
+    # the finding is about. Both channels come through here, so neither can end
+    # up with entries nobody can verify later.
+    anchor = capture_anchor(project_dir, entry)
+    if anchor:
+        entry["anchor"] = anchor
     with open(path, "a") as f:
         fcntl.flock(f, fcntl.LOCK_EX)
         try:

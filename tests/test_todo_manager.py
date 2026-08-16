@@ -325,3 +325,40 @@ def test_get_todo_returns_the_entry_including_closed_ones(tmp_path):
     assert entry is not None
     assert entry["outcome"] == "wontfix"
     assert get_todo(str(tmp_path), "nosuchid") is None
+
+
+def test_recorded_items_carry_an_anchor_to_the_code_they_describe(tmp_path):
+    """Both channels record through add_todo, so anchoring belongs there —
+    otherwise the hook's findings would be verifiable and the skill's would not.
+    """
+    source = tmp_path / "src" / "app.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("def load(path):\n    return open(path).read()\n")
+
+    add_todo(str(tmp_path), {
+        "type": "function_size",
+        "file_path": "src/app.py",
+        "locations": [{"line_start": 1, "line_end": 2}],
+        "description": "load does its own file handling",
+        "severity": "low",
+        "source": "skill",
+    })
+
+    entry = list_todos(str(tmp_path))[0]
+    assert entry["anchor"]["fingerprint"]
+    assert entry["anchor"]["file_hash"]
+
+
+def test_recording_still_works_when_the_file_cannot_be_read(tmp_path):
+    """A mistyped path, or one already deleted, must not fail the recording."""
+    todo_id, is_new = add_todo(str(tmp_path), {
+        "type": "custom",
+        "file_path": "src/gone.py",
+        "locations": [],
+        "description": "recorded against nothing",
+        "severity": "low",
+        "source": "skill",
+    })
+
+    assert is_new is True
+    assert "anchor" not in list_todos(str(tmp_path))[0]
