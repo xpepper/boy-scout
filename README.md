@@ -1,5 +1,7 @@
 # Boy Scout Plugin for Claude Code
 
+[![Tests](https://github.com/xpepper/boy-scout/actions/workflows/tests.yml/badge.svg)](https://github.com/xpepper/boy-scout/actions/workflows/tests.yml)
+
 > *"Leave every piece of code a little better than you found it."*
 > — Robert C. Martin, [97 Things Every Programmer Should Know, ch. 8](https://learning.oreilly.com/library/view/97-things-every/9780596809515/ch08.html)
 
