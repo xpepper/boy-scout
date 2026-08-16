@@ -15,7 +15,7 @@ from pathlib import Path
 _LIB = Path(__file__).parent / "lib"
 sys.path.insert(0, str(_LIB))
 
-from todo_manager import list_todos, get_last_surfaced, set_last_surfaced
+from todo_manager import list_todos, get_last_surfaced, set_last_surfaced, load_config
 
 
 SEVERITY_BADGE = {"high": "🔴", "medium": "🟡", "low": "🟢"}
@@ -31,7 +31,7 @@ TYPE_LABEL = {
 MAX_ITEMS_IN_SUMMARY = 12
 
 
-def _format_summary(todos: list) -> str:
+def _format_summary(todos: list, open_count: int, triage_threshold: int) -> str:
     count = len(todos)
     plural = "y" if count == 1 else "ies"
 
@@ -55,6 +55,14 @@ def _format_summary(todos: list) -> str:
         "💡 All items are saved in .claude/boy-scout-todos.jsonl.",
         "   Start a Boy Scout session whenever you're ready to address them incrementally.",
     ]
+
+    if open_count >= triage_threshold:
+        lines += [
+            "",
+            f"⚠️  Backlog has grown to {open_count} open items (triage threshold: {triage_threshold}).",
+            "   Run a Boy Scout session — or dismiss stale items — before it stops being trustworthy.",
+        ]
+
     return "\n".join(lines)
 
 
@@ -70,7 +78,11 @@ def main() -> None:
 
     set_last_surfaced(project_dir)
 
-    summary = _format_summary(todos)
+    config = load_config(project_dir)
+    triage_threshold = config.get("session", {}).get("triage_threshold", 20)
+    open_count = len(list_todos(project_dir))
+
+    summary = _format_summary(todos, open_count=open_count, triage_threshold=triage_threshold)
     print(json.dumps({
         "decision": "approve",
         "systemMessage": summary,
