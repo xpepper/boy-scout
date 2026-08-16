@@ -11,8 +11,21 @@
     },
     "type": {
       "type": "string",
-      "enum": ["duplication", "function_size", "naming", "test_coverage", "dead_code", "wrong_abstraction", "custom"],
-      "description": "Category of the refactoring opportunity"
+      "enum": [
+        "skipped_refactor",
+        "comprehension_cost",
+        "self_inflicted_debt",
+        "test_smell",
+        "repeated_friction",
+        "duplication",
+        "function_size",
+        "naming",
+        "test_coverage",
+        "dead_code",
+        "wrong_abstraction",
+        "custom"
+      ],
+      "description": "Category of the refactoring opportunity. The first five are signals only an agent that did the work can produce; the rest are the standard smell taxonomy."
     },
     "file_path": {
       "type": "string",

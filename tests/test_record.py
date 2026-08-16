@@ -219,6 +219,35 @@ def test_recording_without_an_outcome_leaves_the_item_open(tmp_path):
     assert "outcome" not in entry
 
 
+AGENT_ONLY_SIGNALS = {
+    "skipped_refactor",
+    "comprehension_cost",
+    "self_inflicted_debt",
+    "test_smell",
+    "repeated_friction",
+}
+
+
+def test_agent_only_signals_are_first_class_types():
+    """These are the plugin's reason to exist: observations that only an agent
+    that did the work can make, and that no linter or static detector can. If
+    they collapse back into `custom` the plugin is just another smell scanner.
+    """
+    assert AGENT_ONLY_SIGNALS <= _load_record_module().VALID_TYPES
+
+
+def test_agent_only_signals_are_recordable(tmp_path):
+    for signal in sorted(AGENT_ONLY_SIGNALS):
+        result = _record(
+            tmp_path,
+            type=signal,
+            file=f"src/{signal}.py",
+            description=f"Observation of kind {signal}",
+            severity="low",
+        )
+        assert result["is_new"] is True
+
+
 def test_schema_enumerates_exactly_the_valid_types():
     """Guard against the taxonomy drifting apart across the repo again."""
     schema = json.loads(_SCHEMA.read_text())

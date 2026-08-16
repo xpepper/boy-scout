@@ -35,6 +35,14 @@ sys.path.insert(0, str(Path(_plugin_root) / "hooks" / "lib"))
 from todo_manager import VALID_OUTCOMES, add_todo, list_todos, resolve_todo  # noqa: E402
 
 VALID_TYPES = {
+    # Signals only an agent that did the work can produce. These are the
+    # plugin's reason to exist: no linter can see them.
+    "skipped_refactor",
+    "comprehension_cost",
+    "self_inflicted_debt",
+    "test_smell",
+    "repeated_friction",
+    # The standard smell taxonomy, for what static analysis also catches.
     "duplication",
     "function_size",
     "naming",

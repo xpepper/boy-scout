@@ -71,6 +71,29 @@ def test_summary_renders_new_types_with_their_own_label():
     assert "[Wrong abstraction]" in summary
 
 
+def test_summary_names_agent_only_signals_for_what_they_are():
+    """A skipped refactor step and a comprehension cost read very differently
+    in a report; rendering either as a generic "Opportunity" throws away the
+    only information the agent could contribute.
+    """
+    stop_hook = _load_stop_hook()
+    todos = [
+        {**_todo(0), "type": "skipped_refactor"},
+        {**_todo(1), "type": "comprehension_cost"},
+        {**_todo(2), "type": "self_inflicted_debt"},
+        {**_todo(3), "type": "test_smell"},
+        {**_todo(4), "type": "repeated_friction"},
+    ]
+
+    summary = stop_hook._format_summary(todos, open_count=5, triage_threshold=20)
+
+    assert "[Skipped refactor]" in summary
+    assert "[Comprehension cost]" in summary
+    assert "[Self-inflicted debt]" in summary
+    assert "[Test smell]" in summary
+    assert "[Repeated friction]" in summary
+
+
 def test_stop_hook_stays_silent_when_no_new_todos_even_over_threshold(tmp_path):
     """Regression guard: the nudge must not turn into a nag on every Stop
     event once the backlog crosses the threshold — it should only ride

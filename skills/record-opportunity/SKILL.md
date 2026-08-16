@@ -1,14 +1,18 @@
 ---
 name: Record Boy Scout Opportunity
 description: >
-  This skill should be used proactively—without waiting for the user to ask—whenever
+  This skill should be used proactively, without waiting for the user to ask, whenever
   Claude notices a refactoring opportunity, code smell, or improvement while working
-  on any task. Trigger on observations like "this function is getting long",
-  "this logic appears to be duplicated elsewhere", "this variable name doesn't
-  reveal its intent", "there's no test for this module", or "this abstraction
-  is doing too much". The skill records the opportunity silently without
-  interrupting the current task, so Claude can stay focused while nothing goes
-  unnoticed.
+  on any task. Trigger hardest on observations only an agent doing the work can make:
+  "tests are green but I skipped the refactor step", "I had to read three files to
+  work out what this returns", "I inlined this instead of threading the parameter
+  through, to keep the diff small", "this test is slow / order-dependent / mocks
+  everything", "I've now worked around this same region twice". Also trigger on
+  "this function is getting long", "this logic is duplicated elsewhere", "this name
+  doesn't reveal its intent", "there's no test for this module", "this abstraction
+  is doing too much". The skill triages each observation into fix-it-now, record-for-later,
+  or drop-it, so small safe cleanups happen while Claude is standing there and
+  everything else is recorded without derailing the current task.
 version: 0.1.0
 ---
 
@@ -27,7 +31,41 @@ understanding reveals.
 
 ## When to Trigger
 
-Record an opportunity whenever noticing **any** of the following while doing other work:
+### The signals worth reaching for first
+
+These come from **having done the work**. A linter cannot see any of them, and
+neither can a reviewer reading the finished diff — the evidence exists only in
+the working session that just happened. They are the most valuable thing this
+skill can capture, so check for them before reaching for the generic categories
+below.
+
+- **Skipped refactor step** (`skipped_refactor`): The TDD loop reached green and moved
+  on without step 5. Trigger the moment tests pass and the thought *"this works, but
+  I'd have written it differently with more time"* appears. Say what the refactor would be.
+- **Comprehension cost** (`comprehension_cost`): Understanding something cost more than
+  it should — several files opened to answer one question, a name that had to be
+  checked against its definition, control flow that needed re-reading. Record *what
+  you had to do to understand it*, because that is the measurement: "had to read
+  `Session`, `TokenStore` and `Clock` to find out what `refresh()` returns on expiry".
+- **Self-inflicted debt** (`self_inflicted_debt`): A compromise made in *this* task —
+  inlining instead of threading a parameter through, copying a helper to keep the
+  diff small, widening a type to avoid a cascade, a `TODO` left in the code. Nothing
+  else in the ecosystem can record this, because nobody else knows a choice was made.
+  Record it at the moment of the compromise, and say what the uncompromised version is.
+- **Test smell** (`test_smell`): A test that is slow, order-dependent, over-mocked,
+  coupled to implementation detail rather than behaviour, or that fails for reasons
+  unrelated to what it names. Usually noticed *while running the suite*, which is
+  precisely when it can be recorded.
+- **Repeated friction** (`repeated_friction`): The same region worked around again —
+  this session, or in a previous one. Before recording, check the existing backlog
+  for entries on the same file: a second or third finding in one region is shotgun
+  surgery announcing itself, and is worth more than any of the findings alone.
+
+### The generic categories
+
+Static analysis and code-review skills cover these too, so record them when the
+observation is genuinely yours and specific — not as a restatement of what a
+linter already reports.
 
 - **Duplication** (`duplication`): Two blocks of logic that do the same thing, even if named differently
 - **Complexity** (`function_size`): A function juggling multiple responsibilities, or too long to read at a glance
@@ -37,7 +75,7 @@ Record an opportunity whenever noticing **any** of the following while doing oth
 - **Dead code** (`dead_code`): Commented-out blocks, unused imports, unreachable branches
 - **Custom** (`custom`): Any other improvement worth revisiting
 
-Do **not** stop the current task to fix the issue. Record and continue.
+Having noticed something, the next question is *when* to act on it — see **Triage**.
 
 ## How to Record
 
@@ -57,12 +95,14 @@ python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
 
 | Argument | Required | Values | Notes |
 |----------|----------|--------|-------|
-| `--type` | ✅ | `duplication`, `function_size`, `naming`, `test_coverage`, `dead_code`, `wrong_abstraction`, `custom` | Pick the closest category |
+| `--type` | ✅ | `skipped_refactor`, `comprehension_cost`, `self_inflicted_debt`, `test_smell`, `repeated_friction`, `duplication`, `function_size`, `naming`, `test_coverage`, `dead_code`, `wrong_abstraction`, `custom` | Pick the closest category |
 | `--file` | ✅ | string | Relative to project root |
 | `--description` | ✅ | string | Explain *what* the issue is and *why* it matters |
 | `--severity` | ✅ | `low`, `medium`, `high` | See severity guide below |
 | `--lines` | optional | `42` or `42-58` | Omit for file-level issues |
 | `--context` | optional | string | Suggest an approach or name a pattern |
+| `--outcome` | optional | `fixed`, `wontfix`, `stale` | Closes the item immediately — see **Triage: now** |
+| `--note` | optional | string | Why it ended that way |
 
 ### Severity Guide
 
@@ -73,6 +113,60 @@ python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
 | `low` | Minor polish — nice to have but not urgent |
 
 ## Examples
+
+**Reached green, skipped the refactor:**
+```bash
+python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
+  --type skipped_refactor \
+  --file src/billing/invoice.py \
+  --lines 120-165 \
+  --description "apply_discount() passed its new test as a fourth branch in the same if-chain; the chain wants to be a strategy lookup but the change was already large" \
+  --severity medium \
+  --context "Replace the if-chain with a DISCOUNT_RULES dict keyed by discount kind"
+```
+
+**Understanding it cost too much:**
+```bash
+python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
+  --type comprehension_cost \
+  --file src/auth/session.rs \
+  --lines 44-70 \
+  --description "Had to read session.rs, token_store.rs and clock.rs to find out that refresh() returns None on an expired token rather than an error" \
+  --severity high \
+  --context "Return an explicit Result<Token, SessionExpired> so the outcome is readable at the call site"
+```
+
+**A compromise made in this task:**
+```bash
+python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
+  --type self_inflicted_debt \
+  --file src/report/render.ts \
+  --lines 88 \
+  --description "Read the locale from the module-level config instead of threading it through renderRow(), to keep this diff to one file" \
+  --severity medium \
+  --context "Thread locale from buildReport() down to renderRow() and drop the module-level read"
+```
+
+**A test that is a problem in itself:**
+```bash
+python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
+  --type test_smell \
+  --file tests/test_checkout.py \
+  --lines 30-95 \
+  --description "test_checkout_flow mocks the repository, the clock and the mailer, so it asserts on call order rather than on the order being placed; it passes when the behaviour is wrong" \
+  --severity high \
+  --context "Use a real in-memory repository and a fixed clock; assert on the resulting order"
+```
+
+**The same region, again:**
+```bash
+python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
+  --type repeated_friction \
+  --file src/api/handlers.go \
+  --description "Third session in a row that adding an endpoint required editing this file plus routes.go plus errors.go in lockstep" \
+  --severity high \
+  --context "The three files share one concept; consider a per-endpoint module that owns its route, handler and errors"
+```
 
 **Duplicated parsing logic:**
 ```bash
