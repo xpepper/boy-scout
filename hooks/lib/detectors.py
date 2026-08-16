@@ -328,6 +328,52 @@ def _count_brace_func_lines(
     return len(raw_lines) - start_idx
 
 
+def _detect_elm_declaration_size(
+    raw_lines: List[str], max_lines: int
+) -> List[Dict]:
+    """Size Elm declarations by the offside rule.
+
+    Elm has no braces and no `end`: a top-level declaration runs until the next
+    thing that starts in column 0. That boundary is the only one the language
+    gives you, and it is exact — everything belonging to the declaration is
+    indented under it.
+    """
+    func_re = FUNC_PATTERNS["elm"]
+    findings: List[Dict] = []
+
+    starts: List[Tuple[int, str]] = []
+    for i, line in enumerate(raw_lines):
+        match = func_re.match(line)
+        if match:
+            starts.append((i, match.group(1)))
+
+    def _boundary(after: int) -> int:
+        """Index of the next line in column 0 that ends the declaration."""
+        for j in range(after + 1, len(raw_lines)):
+            line = raw_lines[j]
+            if line[:1].strip() and not is_blank_or_comment(line, "elm"):
+                return j
+        return len(raw_lines)
+
+    for start_idx, name in starts:
+        end_idx = _boundary(start_idx)
+        # Trailing blank lines belong to the gap, not to the declaration.
+        while end_idx > start_idx + 1 and not raw_lines[end_idx - 1].strip():
+            end_idx -= 1
+        size = end_idx - start_idx
+        if size > max_lines:
+            findings.append({
+                "type": "function_size",
+                "locations": [{"line_start": start_idx + 1, "line_end": end_idx}],
+                "severity": "medium" if size > max_lines * 2 else "low",
+                "description": (
+                    f"Function '{name}' spans {size} lines "
+                    f"(threshold: {max_lines}) — consider decomposing"
+                ),
+            })
+    return findings
+
+
 def detect_function_size(file_path: str, config: Dict) -> List[Dict]:
     """Flag functions whose body exceeds the configured line threshold."""
     max_lines = _thresholds(config)["max_func_lines"]
@@ -360,6 +406,10 @@ def detect_function_size(file_path: str, config: Dict) -> List[Dict]:
                         ),
                     })
         return findings
+
+    # Elm: no braces to count, so size is bounded by the offside rule instead.
+    if language == "elm":
+        return _detect_elm_declaration_size(content.splitlines(), max_lines)
 
     # Brace-based languages: regex function header + brace counting
     func_re = FUNC_PATTERNS.get(language)

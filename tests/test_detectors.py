@@ -134,3 +134,79 @@ def test_a_missing_test_is_still_reported_when_the_tree_exists(tmp_path):
     _source(tmp_path, "tests/billing/test_shipping.py", "def test_ship():\n    pass\n")
 
     assert len(detect_test_coverage_gap(str(source), {}, str(tmp_path))) == 1
+
+
+_LONG_ELM = """\
+module Compiler.Lower exposing (lowerExpr)
+
+
+lowerExpr : Expr -> Core
+lowerExpr expr =
+    case expr of
+        Literal value ->
+            Core.Lit value
+
+        Lambda param body ->
+            Core.Abs param (lowerExpr body)
+
+        Let bindings body ->
+            Core.Let
+                (List.map lowerBinding bindings)
+                (lowerExpr body)
+
+        App fn arg ->
+            Core.App (lowerExpr fn) (lowerExpr arg)
+
+        If cond yes no ->
+            Core.Case (lowerExpr cond)
+                [ ( truePattern, lowerExpr yes )
+                , ( falsePattern, lowerExpr no )
+                ]
+
+
+small : Int -> Int
+small n =
+    n + 1
+"""
+
+
+def test_function_size_reports_long_elm_declarations(tmp_path):
+    """Elm is second in the plugin's stated language priority, and the `elm`
+    entry in FUNC_PATTERNS was unreachable: the detector bailed on anything
+    that was not brace-delimited, which Elm is not.
+    """
+    from detectors import detect_function_size
+
+    source = tmp_path / "Lower.elm"
+    source.write_text(_LONG_ELM)
+
+    findings = detect_function_size(str(source), {"detection": {"sensitivity": "balanced"}})
+
+    assert len(findings) == 1
+    assert "lowerExpr" in findings[0]["description"]
+
+
+def test_function_size_leaves_short_elm_declarations_alone(tmp_path):
+    from detectors import detect_function_size
+
+    source = tmp_path / "Small.elm"
+    source.write_text("module Small exposing (add)\n\n\nadd : Int -> Int -> Int\nadd a b =\n    a + b\n")
+
+    assert detect_function_size(str(source), {}) == []
+
+
+def test_elm_declaration_size_stops_at_the_next_declaration(tmp_path):
+    """The offside rule is the only boundary Elm gives you: a declaration ends
+    where the next thing starts in column 0. Running past it would make every
+    declaration look like it spans the rest of the file.
+    """
+    from detectors import detect_function_size
+
+    source = tmp_path / "Two.elm"
+    source.write_text(
+        "first : Int\nfirst =\n    1\n\n\nsecond : Int\nsecond =\n    2\n"
+    )
+
+    findings = detect_function_size(str(source), {"detection": {"sensitivity": "aggressive"}})
+
+    assert findings == []

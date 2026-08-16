@@ -45,7 +45,7 @@ one on.
 | `duplication` | Copy-pasted blocks (≥6 lines by default) | Any file the hook reads |
 | `naming` | Single-char identifiers, cryptic abbreviations | Rust, Elm, JS/TS, Python, Go |
 | `test_coverage` | Source file changed but no test file found | Rust, Elm, JS/TS, Python, Go, Ruby, Java, Kotlin, Swift |
-| `function_size` | Functions exceeding the line threshold | Python, Rust, JS/TS, Go |
+| `function_size` | Functions exceeding the line threshold | Python, Elm, Rust, JS/TS, Go |
 
 ## Surfacing: the Stop hook
 
