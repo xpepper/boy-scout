@@ -23,7 +23,7 @@ many items there are, the breakdown by severity, and instructions to
 3. verify it with the project's tests,
 4. commit each individually with a conventional commit message,
 5. close that entry once committed, by id, with
-   `resolve.py --id <id> --outcome fixed`.
+   `boy-scout-resolve --id <id> --outcome fixed`.
 
 It is told explicitly not to edit `.claude/boy-scout-todos.jsonl` by hand: the
 detection hook appends to it under a lock while the session works.

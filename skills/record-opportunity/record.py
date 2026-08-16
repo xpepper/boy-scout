@@ -6,7 +6,7 @@ Records a refactoring opportunity to .claude/boy-scout-todos.jsonl. Invoked by
 Claude when it notices an opportunity while doing other work.
 
 Usage:
-    python3 record.py \\
+    boy-scout-record \\
         --type duplication \\
         --file src/handler.rs \\
         --lines 42-58 \\
@@ -20,19 +20,22 @@ recorded-vs-resolved ratio instead of vanishing.
 """
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 
-# Resolve hooks/lib from CLAUDE_PLUGIN_ROOT so the script works regardless of
-# where the plugin is installed.
-_plugin_root = os.environ.get(
-    "CLAUDE_PLUGIN_ROOT",
-    str(Path(__file__).parent.parent.parent),  # …/skills/record-opportunity → plugin root
-)
-sys.path.insert(0, str(Path(_plugin_root) / "hooks" / "lib"))
+# Locate hooks/lib from this file, not from $CLAUDE_PLUGIN_ROOT: the variable
+# is exported to hooks but not to the Bash tool that runs this script, and an
+# empty or stale value would point the import somewhere else entirely.
+_PLUGIN_ROOT = Path(__file__).resolve().parent.parent.parent
+sys.path.insert(0, str(_PLUGIN_ROOT / "hooks" / "lib"))
 
-from todo_manager import VALID_OUTCOMES, add_todo, list_todos, resolve_todo  # noqa: E402
+from todo_manager import (  # noqa: E402
+    VALID_OUTCOMES,
+    add_todo,
+    find_project_dir,
+    list_todos,
+    resolve_todo,
+)
 
 VALID_TYPES = {
     # Signals only an agent that did the work can produce. These are the
@@ -89,7 +92,7 @@ def _parse_locations(lines_str: str) -> list[dict]:
 
 def main() -> None:
     args = _parse_args()
-    project_dir = os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
+    project_dir = find_project_dir()
 
     todo: dict = {
         "type":        args.type,

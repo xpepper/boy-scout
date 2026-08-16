@@ -107,7 +107,7 @@ Just work normally. The Stop hook fires whenever Claude finishes a response and 
    Start a Boy Scout session whenever you're ready to address them incrementally.
 ```
 
-Once the open backlog reaches `session.triage_threshold` (default 20), the summary gains a nudge to triage it. When you are ready, ask Claude to work through `.claude/boy-scout-todos.jsonl` one item at a time. Items stay open until closed with `resolve.py`, which also records whether they were fixed or written off: see [docs/storage.md](docs/storage.md).
+Once the open backlog reaches `session.triage_threshold` (default 20), the summary gains a nudge to triage it. When you are ready, ask Claude to work through `.claude/boy-scout-todos.jsonl` one item at a time. Items stay open until closed with `boy-scout-resolve`, which also records whether they were fixed or written off: see [docs/storage.md](docs/storage.md).
 
 ---
 

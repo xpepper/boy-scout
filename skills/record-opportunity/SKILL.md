@@ -117,7 +117,7 @@ that isn't a `now`: anything in a file this task isn't touching, anything needin
 design decision, anything bigger than a few lines, anything a reviewer might want to
 discuss.
 
-Record it with `record.py` (see **How to Record**) and continue the task. Do **not**
+Record it with `boy-scout-record` (see **How to Record**) and continue the task. Do **not**
 stop the current work to fix it.
 
 ### `never` — don't carry it at all
@@ -168,7 +168,7 @@ A `now` fix is a real refactoring, so it obeys the same rules as any other one.
    and `now` fixes are the only entries on the good side of that ratio.
 
    ```bash
-   python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
+   boy-scout-record \
      --type naming \
      --file src/billing/invoice.py \
      --lines 34 \
@@ -187,10 +187,10 @@ A `now` fix is a real refactoring, so it obeys the same rules as any other one.
 
 ## How to Record
 
-Run the `record.py` script via Bash, filling in the appropriate arguments:
+Run `boy-scout-record` via Bash, filling in the appropriate arguments:
 
 ```bash
-python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
+boy-scout-record \
   --type      <type>         \
   --file      <relative/path/to/file.rs> \
   --description "<intent-revealing description>" \
@@ -198,6 +198,13 @@ python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
   [--lines    <start>-<end>]  \
   [--context  "<suggested approach>"]
 ```
+
+`boy-scout-record` and `boy-scout-resolve` come from the plugin's `bin/`
+directory, which Claude Code puts on `PATH`. Both work out which project's
+backlog to write to on their own, from the working directory. If either is
+somehow not on `PATH`, call the script directly instead — it is
+`skills/record-opportunity/record.py` inside the plugin — and do not fall back
+to editing `.claude/boy-scout-todos.jsonl` by hand.
 
 ### Arguments
 
@@ -213,7 +220,7 @@ python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
 | `--note` | optional | string | What the fix was, if it isn't obvious from the description |
 
 To close an item recorded *earlier*, or to close one as `wontfix` or `stale`, use
-`resolve.py` instead — see **Closing an Item Already Recorded**.
+`boy-scout-resolve` instead — see **Closing an Item Already Recorded**.
 
 ### Severity Guide
 
@@ -227,7 +234,7 @@ To close an item recorded *earlier*, or to close one as `wontfix` or `stale`, us
 
 **Reached green, skipped the refactor:**
 ```bash
-python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
+boy-scout-record \
   --type skipped_refactor \
   --file src/billing/invoice.py \
   --lines 120-165 \
@@ -238,7 +245,7 @@ python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
 
 **Understanding it cost too much:**
 ```bash
-python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
+boy-scout-record \
   --type comprehension_cost \
   --file src/auth/session.rs \
   --lines 44-70 \
@@ -249,7 +256,7 @@ python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
 
 **A compromise made in this task:**
 ```bash
-python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
+boy-scout-record \
   --type self_inflicted_debt \
   --file src/report/render.ts \
   --lines 88 \
@@ -260,7 +267,7 @@ python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
 
 **A test that is a problem in itself:**
 ```bash
-python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
+boy-scout-record \
   --type test_smell \
   --file tests/test_checkout.py \
   --lines 30-95 \
@@ -271,7 +278,7 @@ python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
 
 **The same region, again:**
 ```bash
-python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
+boy-scout-record \
   --type repeated_friction \
   --file src/api/handlers.go \
   --description "Third session in a row that adding an endpoint required editing this file plus routes.go plus errors.go in lockstep" \
@@ -281,7 +288,7 @@ python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
 
 **Duplicated parsing logic:**
 ```bash
-python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
+boy-scout-record \
   --type duplication \
   --file src/routes/auth.rs \
   --lines 88-104 \
@@ -292,7 +299,7 @@ python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
 
 **Function doing too much:**
 ```bash
-python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
+boy-scout-record \
   --type function_size \
   --file src/compiler/lower.elm \
   --lines 200-280 \
@@ -303,7 +310,7 @@ python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
 
 **Misleading name:**
 ```bash
-python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
+boy-scout-record \
   --type naming \
   --file src/pipeline/process.ts \
   --lines 34 \
@@ -313,7 +320,7 @@ python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
 
 **Missing tests:**
 ```bash
-python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
+boy-scout-record \
   --type test_coverage \
   --file src/billing/invoice.py \
   --description "Invoice.apply_discount() has no tests; edge cases around negative discounts are untested" \
@@ -322,7 +329,7 @@ python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
 
 **Leaky abstraction:**
 ```bash
-python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
+boy-scout-record \
   --type wrong_abstraction \
   --file src/storage/repo.rs \
   --lines 12-40 \
@@ -333,7 +340,7 @@ python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
 
 **Dead code:**
 ```bash
-python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
+boy-scout-record \
   --type dead_code \
   --file src/legacy/parser.js \
   --description "Commented-out v1 parser left below the v2 implementation" \
@@ -364,7 +371,7 @@ When an earlier opportunity is dealt with — fixed during a Boy Scout session, 
 against, or overtaken by events — close it by id:
 
 ```bash
-python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/resolve.py" \
+boy-scout-resolve \
   --id a3f9c12e \
   --outcome fixed \
   [--note "Extracted parse_json_body(); suite green"]

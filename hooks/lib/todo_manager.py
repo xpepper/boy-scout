@@ -46,6 +46,30 @@ DEFAULT_CONFIG: Dict = {
 }
 
 
+PROJECT_MARKERS = (".git", ".claude")
+
+
+def find_project_dir(start: Optional[str] = None) -> str:
+    """Resolve which project's backlog we are reading or writing.
+
+    Hooks get `CLAUDE_PROJECT_DIR` exported to them and it always wins. The
+    CLIs do not: they run through the Bash tool, whose environment carries no
+    CLAUDE_* variables at all, and whose working directory is wherever the
+    session last happened to be. Falling back to the working directory alone
+    would scatter a second backlog under every subdirectory Claude cd'd into,
+    so walk up to the nearest project marker first.
+    """
+    from_env = os.environ.get("CLAUDE_PROJECT_DIR")
+    if from_env:
+        return from_env
+
+    current = Path(start or os.getcwd()).resolve()
+    for candidate in (current, *current.parents):
+        if any((candidate / marker).exists() for marker in PROJECT_MARKERS):
+            return str(candidate)
+    return str(current)
+
+
 def _claude_dir(project_dir: str) -> Path:
     d = Path(project_dir) / ".claude"
     d.mkdir(exist_ok=True)

@@ -1,0 +1,12 @@
+#!/bin/sh
+# Record a Boy Scout refactoring opportunity. See skills/record-opportunity/.
+#
+# Claude Code puts every installed plugin's bin/ directory on PATH, so this is
+# callable by bare name from any session. That is the reason it exists:
+# $CLAUDE_PLUGIN_ROOT is exported to hooks but *not* to the Bash tool, so a
+# command written as `python3 "$CLAUDE_PLUGIN_ROOT/…/record.py"` expands to a
+# path with an empty first segment and fails. This wrapper locates the plugin
+# from its own path instead of trusting the environment.
+set -e
+BIN_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+exec python3 "$BIN_DIR/../skills/record-opportunity/record.py" "$@"

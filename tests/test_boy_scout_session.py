@@ -75,6 +75,6 @@ def test_prompt_closes_items_via_resolve_script_not_by_hand_editing(tmp_path):
 
     prompt = boy_scout_session.build_session_prompt(str(tmp_path))
 
-    assert "resolve.py" in prompt
+    assert "boy-scout-resolve" in prompt
     assert "--outcome fixed" in prompt
     assert 'Set that entry\'s "dismissed" field to true' not in prompt

@@ -8,7 +8,7 @@ hook runs cannot interleave.
 while you work, and closing an item rewrites the file in place. Both take the
 same lock; a text editor takes nothing, so a hand-edit can silently drop a
 concurrent write. Close items with
-[`resolve.py`](../skills/record-opportunity/resolve.py) instead.
+`boy-scout-resolve` instead.
 
 The authoritative shape of an entry is [`schema/todo-item.json`](../schema/todo-item.json).
 An example:
