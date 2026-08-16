@@ -29,13 +29,13 @@ understanding reveals.
 
 Record an opportunity whenever noticing **any** of the following while doing other work:
 
-- **Duplication**: Two blocks of logic that do the same thing, even if named differently
-- **Complexity**: A function juggling multiple responsibilities, or too long to read at a glance
-- **Naming**: An identifier that doesn't reveal its intent (single letters, abbreviations, misleading names)
-- **Missing tests**: Production code that was touched but has no corresponding test
-- **Wrong abstraction**: An interface or type that leaks implementation details or mixes concerns
-- **Dead code**: Commented-out blocks, unused imports, unreachable branches
-- **Custom**: Any other improvement worth revisiting
+- **Duplication** (`duplication`): Two blocks of logic that do the same thing, even if named differently
+- **Complexity** (`function_size`): A function juggling multiple responsibilities, or too long to read at a glance
+- **Naming** (`naming`): An identifier that doesn't reveal its intent (single letters, abbreviations, misleading names)
+- **Missing tests** (`test_coverage`): Production code that was touched but has no corresponding test
+- **Wrong abstraction** (`wrong_abstraction`): An interface or type that leaks implementation details or mixes concerns
+- **Dead code** (`dead_code`): Commented-out blocks, unused imports, unreachable branches
+- **Custom** (`custom`): Any other improvement worth revisiting
 
 Do **not** stop the current task to fix the issue. Record and continue.
 
@@ -57,7 +57,7 @@ python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
 
 | Argument | Required | Values | Notes |
 |----------|----------|--------|-------|
-| `--type` | ✅ | `duplication`, `function_size`, `naming`, `test_coverage`, `custom` | Pick the closest category |
+| `--type` | ✅ | `duplication`, `function_size`, `naming`, `test_coverage`, `dead_code`, `wrong_abstraction`, `custom` | Pick the closest category |
 | `--file` | ✅ | string | Relative to project root |
 | `--description` | ✅ | string | Explain *what* the issue is and *why* it matters |
 | `--severity` | ✅ | `low`, `medium`, `high` | See severity guide below |
@@ -113,6 +113,26 @@ python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
   --file src/billing/invoice.py \
   --description "Invoice.apply_discount() has no tests; edge cases around negative discounts are untested" \
   --severity high
+```
+
+**Leaky abstraction:**
+```bash
+python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
+  --type wrong_abstraction \
+  --file src/storage/repo.rs \
+  --lines 12-40 \
+  --description "UserRepo returns raw SQL rows, so callers depend on the schema" \
+  --severity high \
+  --context "Map rows to a User domain type at the repo boundary"
+```
+
+**Dead code:**
+```bash
+python3 "$CLAUDE_PLUGIN_ROOT/skills/record-opportunity/record.py" \
+  --type dead_code \
+  --file src/legacy/parser.js \
+  --description "Commented-out v1 parser left below the v2 implementation" \
+  --severity low
 ```
 
 ## Output

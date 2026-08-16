@@ -31,7 +31,15 @@ sys.path.insert(0, str(Path(_plugin_root) / "hooks" / "lib"))
 
 from todo_manager import add_todo, list_todos  # noqa: E402
 
-VALID_TYPES = {"duplication", "function_size", "naming", "test_coverage", "custom"}
+VALID_TYPES = {
+    "duplication",
+    "function_size",
+    "naming",
+    "test_coverage",
+    "dead_code",
+    "wrong_abstraction",
+    "custom",
+}
 VALID_SEVERITIES = {"low", "medium", "high"}
 
 
@@ -46,28 +54,33 @@ def _parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-def _parse_lines(lines_str: str) -> tuple[int, int]:
+def _parse_locations(lines_str: str) -> list[dict]:
+    """Turn a --lines argument into a locations list.
+
+    Returns an empty list when no usable line range was given: a file-level
+    finding has no line anchor, and pretending it sits on line 1 would make
+    every file-level finding in a file collide with every other one during
+    deduplication.
+    """
     if not lines_str:
-        return 1, 1
+        return []
     parts = lines_str.split("-")
     try:
         start = int(parts[0])
         end   = int(parts[1]) if len(parts) > 1 else start
-        return max(1, start), max(1, end)
     except (ValueError, IndexError):
-        return 1, 1
+        return []
+    return [{"line_start": max(1, start), "line_end": max(1, end)}]
 
 
 def main() -> None:
     args = _parse_args()
     project_dir = os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
 
-    line_start, line_end = _parse_lines(args.lines)
-
     todo: dict = {
         "type":        args.type,
         "file_path":   args.file,
-        "locations":   [{"line_start": line_start, "line_end": line_end}],
+        "locations":   _parse_locations(args.lines),
         "description": args.description,
         "severity":    args.severity,
         "source":      "skill",
@@ -86,7 +99,7 @@ def main() -> None:
     else:
         message = (
             f"Already tracked as [{args.type}] {args.file} (id: {todo_id}) — "
-            "skipped duplicate, an open entry for this file and line range exists"
+            "skipped duplicate, an open entry already describes this issue"
         )
 
     result = {
