@@ -5,126 +5,73 @@
 > *"Leave every piece of code a little better than you found it."*
 > — Robert C. Martin, [97 Things Every Programmer Should Know, ch. 8](https://learning.oreilly.com/library/view/97-things-every/9780596809515/ch08.html)
 
-A Claude Code plugin that implements Boy Scout Rule mechanics: passively detects refactoring opportunities as you work, then surfaces them at the end of each session so nothing gets lost and nothing interrupts your flow.
+Opportunistic refactoring for Claude Code. TDD skills optimise the
+red-green-refactor loop of the task in front of them and keep no memory of what
+they noticed along the way. This plugin keeps that memory: Claude records
+improvement opportunities while working, they survive the session, and focused
+agents turn them back into commits.
 
 ⚠️ Pre-alpha version, use it at your own risk ⚠️
 
 ---
 
-## How it works
+## The loop
 
-```
-During your task                    End of session
-─────────────────                   ──────────────
-Write / Edit a file                 Claude finishes responding
-       │                                    │
-       ▼                                    ▼
-PostToolUse hook fires              Stop hook fires
-       │                                    │
-       ▼                                    ▼
-Detectors run on the file           Reads new TODOs since last run
-       │                                    │
-       ▼                                    ▼
-Findings → .claude/boy-scout-       Injects summary into Claude's
-           todos.jsonl              context via systemMessage
-           (silent, no transcript)  (inform-only, doesn't block)
-```
+1. **Notice.** While doing anything else, Claude records what it sees — a refactor
+   step it skipped, three files it had to read to answer one question, a compromise
+   it made to keep a diff small. Static detectors can add mechanical findings too
+   (opt-in). Small, safe, uncontroversial fixes in a file it is *already editing*
+   get made on the spot instead, as their own commit.
+2. **Surface.** When Claude finishes responding, a Stop hook reports what is new.
+   Nothing interrupts you mid-task.
+3. **Address.** `/boy-scout-session` dispatches one focused agent per item: each
+   verifies its own change, commits it separately, and abandons it rather than
+   pushing through if it stops being small.
 
-Claude also records **semantic** opportunities it notices during work, via the `record-opportunity` skill. That is the primary channel. The static detectors below are mechanical proxies (line counts, regexes) that trade precision for recall, so they are opt-in and disabled by default.
+[How it works in detail →](docs/how-it-works.md)
 
-| Detector | What it finds | Languages |
-|----------|--------------|-----------|
-| **Duplication** | Copy-pasted blocks (≥6 lines by default) | Any file the hook reads |
-| **Naming clarity** | Single-char identifiers, cryptic abbreviations | Rust, Elm, JS/TS, Python, Go |
-| **Test coverage gap** | Source file changed but no test file found | Rust, Elm, JS/TS, Python, Go, Ruby, Java, Kotlin, Swift |
-| **Function size** | Functions exceeding the line threshold | Python, Rust, JS/TS, Go |
-
----
-
-## Installation
-
-Copy or symlink this directory into your Claude Code plugin path, then enable the plugin in Claude Code settings.
+## Install
 
 ```bash
-# Option A: symlink
-ln -s /path/to/boy-scout ~/.claude/plugins/boy-scout
-
-# Option B: copy
-cp -r /path/to/boy-scout ~/.claude/plugins/
+ln -s /path/to/boy-scout ~/.claude/plugins/boy-scout   # or copy the directory
 ```
 
-Requires **Python 3.10+** (no third-party dependencies).
+Then enable the plugin in Claude Code settings. Requires **Python 3.10+**, no
+third-party dependencies. Unix/macOS only: file locking uses `fcntl`.
 
-> **Platform:** Unix/macOS only. The plugin uses `fcntl` for file locking, which is not available on Windows.
+## Use
 
----
+Just work normally — recording happens on its own. When you want to act on what
+has piled up:
 
-## Configuration
+| Command | What it does |
+|---------|--------------|
+| `/boy-scout` | Show the backlog, what has been fixed, and what is worth doing next |
+| `/boy-scout-session [n\|id]` | Address items with one focused agent each, verified and committed separately |
+| `boy-scout-list` | The same backlog, from a terminal |
 
-The plugin auto-creates `.claude/boy-scout-config.json` on first run. Everything has a working default, so you only need the file to turn something on:
+Items stay open until closed with an outcome — `fixed`, `wontfix` or `stale` — so
+the backlog can answer the only question that matters about it: how much of what
+was recorded ever got improved.
+
+Sessions can also run on a schedule, unattended:
+[scheduled resolution](docs/scheduled-resolution.md).
+
+## Configure
+
+Everything has a working default. The plugin auto-creates
+`.claude/boy-scout-config.json` on first run; you only need to edit it to turn a
+static detector on:
 
 ```json
-{
-  "detection": {
-    "patterns": ["test_coverage"]
-  }
-}
+{ "detection": { "patterns": ["test_coverage"] } }
 ```
 
-`patterns` defaults to `[]`, meaning no static detector runs until you list one. Full reference, including sensitivity thresholds and ignore rules: [docs/configuration.md](docs/configuration.md).
+[Full reference →](docs/configuration.md)
 
 ---
 
-## The `record-opportunity` skill
-
-Claude uses this skill proactively whenever it notices an improvement during normal work. No user prompt is needed: Claude invokes it silently and adds a one-line note to its response.
-
-Each observation is triaged into one of three outcomes. Most become **next**: recorded for a later session, which is the note you will usually see.
-
-> *(Boy Scout: noted missing tests for `Invoice.apply_discount()` for later.)*
-
-A small, obvious, uncontroversial fix in a file Claude is **already editing** is instead done **now**, on green, as its own separate commit, and recorded as already resolved. That is the actual Boy Scout Rule: leave the campground cleaner than you found it, rather than filing a report about the litter.
-
-> *(Boy Scout: renamed `tmp` to `pending_invoice` while here.)*
-
-Anything failing all four conditions, or not worth carrying at all, is **never** recorded. The gate is deliberately biased toward deferring: derailing your task is worse than a slightly longer backlog.
-
----
-
-## How a session works
-
-Just work normally. The Stop hook fires whenever Claude finishes a response and hands control back to you, not when you close the terminal, so there is nothing to trigger by hand. When findings have piled up since the last summary, Claude's reply ends with:
-
-```
-🏕️  Boy Scout report: 4 new refactoring opportunities detected.
-
-  🟡 [Duplication] src/routes/auth.rs: Duplicated block (17 lines): lines 88–104 and 45–61
-  🟢 [Naming]      src/pipeline/process.ts: Abbreviated identifier 'tmp' …
-  🟡 [No tests]    src/billing/invoice.py: No test file found for invoice.py …
-  🟢 [Long function] src/compiler/lower.ts: Function 'lowerExpr' spans 80 lines …
-
-💡 All items are saved in .claude/boy-scout-todos.jsonl.
-   Start a Boy Scout session whenever you're ready to address them incrementally.
-```
-
-Once the open backlog reaches `session.triage_threshold` (default 20), the summary gains a nudge to triage it. When you are ready, ask Claude to work through `.claude/boy-scout-todos.jsonl` one item at a time. Items stay open until closed with `boy-scout-resolve`, which also records whether they were fixed or written off: see [docs/storage.md](docs/storage.md).
-
----
-
-## Scheduled resolution
-
-Remembering to start a session is its own forgetting problem. `scripts/run-boy-scout-session.sh` runs a headless session against the open backlog and exits cleanly if there is nothing to do:
-
-```bash
-CLAUDE_PROJECT_DIR=/path/to/project ./scripts/run-boy-scout-session.sh
-```
-
-Each run addresses up to 5 of the highest-severity open items, verifying and committing each one individually. It never pushes. Cron, launchd, and the caveats before trusting it unattended: [docs/scheduled-resolution.md](docs/scheduled-resolution.md).
-
----
-
-## More
-
+[How it works](docs/how-it-works.md) ·
 [Configuration](docs/configuration.md) ·
 [TODO storage](docs/storage.md) ·
 [Scheduled resolution](docs/scheduled-resolution.md) ·
