@@ -1,8 +1,13 @@
 # Claude project state
 .claude/boy-scout-todos.jsonl
 .claude/boy-scout-meta.json
-# Keep config under version control if desired; ignore if not:
-# .claude/boy-scout-config.json
+# Written by `claude plugin ... --scope local`; holds an absolute path to this
+# checkout, so it is per-machine by construction.
+.claude/settings.local.json
+# Auto-created on first run. This repo runs no static detectors, so its config
+# is pure defaults and there is nothing to pin; a project with real settings
+# would want the opposite.
+.claude/boy-scout-config.json
 
 # Python
 __pycache__/
