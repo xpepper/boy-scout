@@ -140,6 +140,85 @@ def test_dead_code_and_wrong_abstraction_are_recordable_types(tmp_path):
     assert {e["type"] for e in entries} == {"dead_code", "wrong_abstraction"}
 
 
+def test_recording_a_now_fix_closes_the_item_it_creates(tmp_path):
+    """A fix made on the spot is still recorded: it is the numerator of the
+    recorded-vs-resolved ratio, and skipping it would make the plugin look
+    like it only ever defers.
+    """
+    result = _record(
+        tmp_path,
+        type="naming",
+        file="src/x.py",
+        lines="34",
+        description="tmp holds a validated Invoice; renamed to pending_invoice",
+        severity="low",
+        outcome="fixed",
+    )
+
+    assert result["is_new"] is True
+    assert result["outcome"] == "fixed"
+    entry = _read_entries(tmp_path)[0]
+    assert entry["outcome"] == "fixed"
+    assert entry["dismissed"] is True
+
+
+def test_fixing_an_already_tracked_item_closes_that_item(tmp_path):
+    """Cleaning up something the backlog already knows about must close the
+    open entry, not leave it open beside a resolved twin.
+    """
+    recorded = _record(
+        tmp_path,
+        type="naming",
+        file="src/x.py",
+        lines="34",
+        description="tmp doesn't say what it holds",
+        severity="low",
+    )
+    fixed = _record(
+        tmp_path,
+        type="naming",
+        file="src/x.py",
+        lines="34",
+        description="renamed tmp to pending_invoice",
+        severity="low",
+        outcome="fixed",
+    )
+
+    assert fixed["id"] == recorded["id"]
+    entries = _read_entries(tmp_path)
+    assert len(entries) == 1
+    assert entries[0]["outcome"] == "fixed"
+
+
+def test_outcome_note_is_stored(tmp_path):
+    _record(
+        tmp_path,
+        type="dead_code",
+        file="src/x.py",
+        description="Commented-out v1 parser",
+        severity="low",
+        outcome="wontfix",
+        note="Kept deliberately as a reference for the migration",
+    )
+
+    entry = _read_entries(tmp_path)[0]
+    assert entry["resolution_note"] == "Kept deliberately as a reference for the migration"
+
+
+def test_recording_without_an_outcome_leaves_the_item_open(tmp_path):
+    _record(
+        tmp_path,
+        type="naming",
+        file="src/x.py",
+        description="tmp doesn't say what it holds",
+        severity="low",
+    )
+
+    entry = _read_entries(tmp_path)[0]
+    assert entry["dismissed"] is False
+    assert "outcome" not in entry
+
+
 def test_schema_enumerates_exactly_the_valid_types():
     """Guard against the taxonomy drifting apart across the repo again."""
     schema = json.loads(_SCHEMA.read_text())
