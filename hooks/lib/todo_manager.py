@@ -258,6 +258,39 @@ def resolve_todo(
             f"unknown outcome {outcome!r}; expected one of {', '.join(VALID_OUTCOMES)}"
         )
 
+    def close(entry: Dict) -> None:
+        entry["dismissed"] = True
+        entry["outcome"] = outcome
+        entry["resolved_at"] = time.time()
+        if note:
+            entry["resolution_note"] = note
+
+    return _update_entry(project_dir, todo_id, close)
+
+
+def relocate_todo(project_dir: str, todo_id: str, locations: List[Dict]) -> bool:
+    """Point an entry at where its code actually is now.
+
+    Only ever called for an entry whose fingerprint was found intact somewhere
+    else in the file, so this corrects a line number rather than changing what
+    the entry claims. The anchor is re-taken at the same time, so the next read
+    hits the cheap file-hash path instead of searching the file again.
+    """
+    def move(entry: Dict) -> None:
+        entry["locations"] = locations
+        anchor = capture_anchor(project_dir, entry)
+        if anchor:
+            entry["anchor"] = anchor
+
+    return _update_entry(project_dir, todo_id, move)
+
+
+def _update_entry(project_dir: str, todo_id: str, mutate) -> bool:
+    """Apply `mutate` to one entry, in place, under the store's lock.
+
+    Returns True if the entry was found and updated, False if no entry has that
+    id.
+    """
     path = _todos_path(project_dir)
     if not path.exists():
         return False
@@ -279,11 +312,7 @@ def resolve_todo(
                     continue
                 if entry.get("id") != todo_id:
                     continue
-                entry["dismissed"] = True
-                entry["outcome"] = outcome
-                entry["resolved_at"] = time.time()
-                if note:
-                    entry["resolution_note"] = note
+                mutate(entry)
                 lines[i] = json.dumps(entry)
                 found = True
 
