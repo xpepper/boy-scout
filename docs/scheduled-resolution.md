@@ -22,7 +22,11 @@ many items there are, the breakdown by severity, and instructions to
 2. make the smallest safe change for each, one at a time,
 3. verify it with the project's tests,
 4. commit each individually with a conventional commit message,
-5. set that entry's `"dismissed"` field to `true` once committed.
+5. close that entry once committed, by id, with
+   `resolve.py --id <id> --outcome fixed`.
+
+It is told explicitly not to edit `.claude/boy-scout-todos.jsonl` by hand: the
+detection hook appends to it under a lock while the session works.
 
 It is told not to batch unrelated fixes and not to push. The session runs with
 `--allowedTools Read,Edit,Write,Bash`.

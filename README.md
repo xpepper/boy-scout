@@ -79,7 +79,15 @@ The plugin auto-creates `.claude/boy-scout-config.json` on first run. Everything
 
 Claude uses this skill proactively whenever it notices an improvement during normal work. No user prompt is needed: Claude invokes it silently and adds a one-line note to its response.
 
+Each observation is triaged into one of three outcomes. Most become **next**: recorded for a later session, which is the note you will usually see.
+
 > *(Boy Scout: noted missing tests for `Invoice.apply_discount()` for later.)*
+
+A small, obvious, uncontroversial fix in a file Claude is **already editing** is instead done **now**, on green, as its own separate commit, and recorded as already resolved. That is the actual Boy Scout Rule: leave the campground cleaner than you found it, rather than filing a report about the litter.
+
+> *(Boy Scout: renamed `tmp` to `pending_invoice` while here.)*
+
+Anything failing all four conditions, or not worth carrying at all, is **never** recorded. The gate is deliberately biased toward deferring: derailing your task is worse than a slightly longer backlog.
 
 ---
 
@@ -99,7 +107,7 @@ Just work normally. The Stop hook fires whenever Claude finishes a response and 
    Start a Boy Scout session whenever you're ready to address them incrementally.
 ```
 
-Once the open backlog reaches `session.triage_threshold` (default 20), the summary gains a nudge to triage it. When you are ready, ask Claude to work through `.claude/boy-scout-todos.jsonl` one item at a time. Items live there until something sets `"dismissed": true`: see [docs/storage.md](docs/storage.md).
+Once the open backlog reaches `session.triage_threshold` (default 20), the summary gains a nudge to triage it. When you are ready, ask Claude to work through `.claude/boy-scout-todos.jsonl` one item at a time. Items stay open until closed with `resolve.py`, which also records whether they were fixed or written off: see [docs/storage.md](docs/storage.md).
 
 ---
 

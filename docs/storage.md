@@ -2,8 +2,13 @@
 
 Opportunities are persisted in `.claude/boy-scout-todos.jsonl`: line-delimited
 JSON, one entry per line, appended under an exclusive `fcntl` lock so parallel
-hook runs cannot interleave. Nothing else in the plugin rewrites the file, so
-it is safe to edit by hand.
+hook runs cannot interleave.
+
+**Do not edit it by hand.** Two writers share it: the PostToolUse hook appends
+while you work, and closing an item rewrites the file in place. Both take the
+same lock; a text editor takes nothing, so a hand-edit can silently drop a
+concurrent write. Close items with
+[`resolve.py`](../skills/record-opportunity/resolve.py) instead.
 
 The authoritative shape of an entry is [`schema/todo-item.json`](../schema/todo-item.json).
 An example:
@@ -33,13 +38,21 @@ An example:
 | `source` | `"hook"` for static detection, `"skill"` for Claude's own semantic observation via `record-opportunity` |
 | `dismissed` | `false` until the item is resolved or written off |
 | `context` | Optional. A suggested approach, recorded by the skill when Claude has one. |
+| `outcome` | Absent while the item is open. On closing: `fixed`, `wontfix`, or `stale`. |
+| `resolved_at` | Unix timestamp, written when the item is closed |
+| `resolution_note` | Optional. Why it was closed that way. |
 
 ## What "open" means
 
 Everything that reads the backlog (the Stop hook's counts, the scheduled
 session runner, the deduplication check) considers only entries with
-`"dismissed": false`. Closing an item means setting that field to `true`: there
-is no separate "done" state and nothing removes lines from the file.
+`"dismissed": false`. Nothing ever removes lines from the file.
+
+`dismissed` records *that* an item is closed; `outcome` records *how*. Keeping
+both means every reader that predates outcomes still works unchanged, while the
+question that actually matters stays answerable: of everything recorded, how
+much got fixed rather than written off. A backlog that cannot answer that is
+not a backlog, it is a graveyard.
 
 ## Deduplication
 
