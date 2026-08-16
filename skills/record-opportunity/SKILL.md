@@ -1,5 +1,5 @@
 ---
-name: Record Boy Scout Opportunity
+name: record-opportunity
 description: >
   This skill should be used proactively, without waiting for the user to ask, whenever
   Claude notices a refactoring opportunity, code smell, or improvement while working
