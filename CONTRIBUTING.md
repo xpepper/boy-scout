@@ -14,6 +14,34 @@ without requiring self-approval on a single-maintainer repo.
 Windows is deliberately not tested or supported: the plugin uses `fcntl` for
 file locking, which does not exist there.
 
+## Running the plugin on itself
+
+The fastest way to see a change behave is to install this checkout as a plugin
+in this repository, scoped to you alone:
+
+```bash
+claude plugin marketplace add ./ --scope local
+claude plugin install boy-scout@boy-scout --scope local -y
+```
+
+That points Claude Code at the working tree, so edits take effect on the next
+session with no reinstall. It writes `.claude/settings.local.json`, which is
+gitignored because it stores an absolute path to your checkout.
+
+To check what Claude Code actually loaded:
+
+```bash
+claude plugin validate .            # the manifests
+claude plugin validate skills       # and agents, commands
+claude plugin details boy-scout@boy-scout   # inventory and token cost
+```
+
+To remove it again:
+
+```bash
+claude plugin marketplace remove boy-scout
+```
+
 ## Tests
 
 ```bash

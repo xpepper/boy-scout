@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "boy-scout",
+  "description": "Opportunistic refactoring for Claude Code: record what you notice while working, then address it with focused agents.",
+  "owner": {
+    "name": "Pietro Di Bello",
+    "url": "https://github.com/xpepper"
+  },
+  "plugins": [
+    {
+      "name": "boy-scout",
+      "source": ".",
+      "description": "Records refactoring opportunities as Claude works, surfaces them at the end of each session, and addresses them with focused single-item agents.",
+      "category": "code-quality"
+    }
+  ]
+}

@@ -32,12 +32,34 @@ agents turn them back into commits.
 
 ## Install
 
-```bash
-ln -s /path/to/boy-scout ~/.claude/plugins/boy-scout   # or copy the directory
+The repository is its own marketplace, so it installs the standard way — inside
+Claude Code:
+
+```
+/plugin marketplace add xpepper/boy-scout
+/plugin install boy-scout@boy-scout
 ```
 
-Then enable the plugin in Claude Code settings. Requires **Python 3.10+**, no
-third-party dependencies. Unix/macOS only: file locking uses `fcntl`.
+or from a terminal:
+
+```bash
+claude plugin marketplace add xpepper/boy-scout
+claude plugin install boy-scout@boy-scout
+```
+
+Restart the session to pick it up. To keep it to a single project rather than
+every session on the machine, pass `--scope project` to both commands (or
+`--scope local` for just you, untracked by git).
+
+Requires **Python 3.10+**, no third-party dependencies. Unix/macOS only: file
+locking uses `fcntl`.
+
+Updating and removing:
+
+```bash
+claude plugin update boy-scout@boy-scout
+claude plugin uninstall boy-scout@boy-scout
+```
 
 ## Use
 
