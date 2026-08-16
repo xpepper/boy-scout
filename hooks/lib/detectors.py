@@ -255,10 +255,10 @@ def detect_test_coverage_gap(
     if _find_test_file(file_path, project_dir):
         return []
 
-    rel = _rel_path(file_path, project_dir)
     return [{
         "type": "test_coverage",
-        "locations": [{"line_start": 1, "line_end": 1}],
+        # A missing test file is a property of the file, not of any line in it.
+        "locations": [],
         "severity": "medium",
         "description": (
             f"No test file found for {Path(file_path).name} — "
@@ -410,14 +410,3 @@ def run_all_detectors(
         findings.extend(detect_function_size(file_path, config))
 
     return findings
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _rel_path(file_path: str, project_dir: str) -> str:
-    try:
-        return str(Path(file_path).relative_to(project_dir))
-    except ValueError:
-        return file_path
